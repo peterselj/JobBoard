@@ -11,6 +11,7 @@ export default function Pipeline() {
   const opps = useLiveQuery(() => db.opportunities.toArray(), []) ?? [];
   const contacts = useLiveQuery(() => db.contacts.toArray(), []) ?? [];
   const oppContacts = useLiveQuery(() => db.oppContacts.toArray(), []) ?? [];
+  const referralPaths = useLiveQuery(() => db.referralPaths.toArray(), []) ?? [];
   const settings = useLiveQuery(() => db.settings.get('app'), []);
   const [selected, setSelected] = useState<number | null>(null);
   const [dragOverStage, setDragOverStage] = useState<string | null>(null);
@@ -19,8 +20,9 @@ export default function Pipeline() {
   const linkCounts = useMemo(() => {
     const m = new Map<number, number>();
     for (const l of oppContacts) m.set(l.oppId, (m.get(l.oppId) ?? 0) + 1);
+    for (const p of referralPaths) m.set(p.oppId, (m.get(p.oppId) ?? 0) + 1);
     return m;
-  }, [oppContacts]);
+  }, [oppContacts, referralPaths]);
 
   const warmCounts = useMemo(() => {
     const m = new Map<number, number>();

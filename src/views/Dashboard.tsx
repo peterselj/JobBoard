@@ -3,7 +3,7 @@ import { useLiveQuery } from 'dexie-react-hooks';
 import { db, saveSettings, type Opportunity } from '../db';
 import { expectedOffers, paceToOffer, stageMap, weeklyMetrics, weightedComp, weekStart, type WeekBucket } from '../lib/pipeline';
 import { findWarmPaths } from '../lib/companyMatch';
-import { daysAgo, formatExpectedOffers, formatMoney, formatWeight } from '../lib/format';
+import { daysAgo, formatExpectedOffers, formatMoney } from '../lib/format';
 import { Badge, Button, EmptyState, Input, SectionHeader, StatCard } from '../components/ui';
 import OppDrawer from '../components/OppDrawer';
 import QuickAddOpp from '../components/QuickAddOpp';
@@ -15,6 +15,7 @@ export default function Dashboard() {
   const activities = useLiveQuery(() => db.activities.toArray(), []) ?? [];
   const contacts = useLiveQuery(() => db.contacts.toArray(), []) ?? [];
   const oppContacts = useLiveQuery(() => db.oppContacts.toArray(), []) ?? [];
+  const referralPaths = useLiveQuery(() => db.referralPaths.toArray(), []) ?? [];
   const settings = useLiveQuery(() => db.settings.get('app'), []);
   const [selected, setSelected] = useState<number | null>(null);
   const [adding, setAdding] = useState(false);
@@ -37,7 +38,10 @@ export default function Dashboard() {
 
   // Needs attention
   const staleDays = settings?.staleDays ?? 7;
-  const linkedOppIds = useMemo(() => new Set(oppContacts.map((l) => l.oppId)), [oppContacts]);
+  const linkedOppIds = useMemo(
+    () => new Set([...oppContacts.map((l) => l.oppId), ...referralPaths.map((p) => p.oppId)]),
+    [oppContacts, referralPaths],
+  );
   const stale = activeOpps.filter((o) => daysAgo(o.updatedAt) >= staleDays);
   const noNextAction = activeOpps.filter((o) => !o.nextAction);
   const warmAvailable = activeOpps.filter(
@@ -86,16 +90,6 @@ export default function Dashboard() {
         <section className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
           <SectionHeader title="Pipeline by stage" />
           <Funnel opps={opps} stagesByIdSize={stages} onSelect={setSelected} />
-          <details className="mt-4 text-sm text-slate-600">
-            <summary className="cursor-pointer font-medium text-indigo-700">Why weight the pipeline?</summary>
-            <p className="mt-2">
-              Each stage's weight is the realistic chance that opp becomes an offer. A new opp is ~0%; even a
-              final round is only ~{formatWeight(stagesById.get('final-round')?.weight ?? 33)}. Summing the weights
-              gives your <span className="font-medium">expected offers</span> — most searches need the sum above
-              1.0 before an offer actually lands. If your number looks small, that's not failure; it's the signal
-              to open more opportunities and convert cold ones into referral paths.
-            </p>
-          </details>
         </section>
 
         {/* Calculator */}
@@ -126,9 +120,6 @@ export default function Dashboard() {
                 for {weeksRemaining} weeks. Your recent pace: {recentPace.toFixed(1)}/week.
               </p>
             )}
-            <p className="mt-2 text-xs text-indigo-700/80">
-              Referral-first searches convert several times better than portal drops — that's how a 16-week search becomes 12.
-            </p>
           </div>
         </section>
       </div>
@@ -188,7 +179,9 @@ function Funnel({ opps, stagesByIdSize: stages, onSelect }: { opps: Opportunity[
     for (const o of opps) m.set(o.stageId, (m.get(o.stageId) ?? 0) + 1);
     return m;
   }, [opps]);
-  const max = Math.max(1, ...stages.map((s) => counts.get(s.id) ?? 0));
+  // Scale bars to the busiest ACTIVE stage so a fat Closed Lost pile can't
+  // flatten the working pipeline; terminal bars just cap at full width.
+  const max = Math.max(1, ...stages.filter((s) => s.kind === 'active').map((s) => counts.get(s.id) ?? 0));
   return (
     <div className="space-y-1.5">
       {stages.map((s) => {
@@ -200,7 +193,7 @@ function Funnel({ opps, stagesByIdSize: stages, onSelect }: { opps: Opportunity[
             <div className="h-5 flex-1 rounded bg-slate-100">
               <div
                 className={`h-5 rounded ${s.kind === 'won' ? 'bg-green-500' : s.kind === 'lost' ? 'bg-slate-300' : 'bg-indigo-500'}`}
-                style={{ width: `${(count / max) * 100}%`, minWidth: count > 0 ? 8 : 0 }}
+                style={{ width: `${Math.min((count / max) * 100, 100)}%`, minWidth: count > 0 ? 8 : 0 }}
               />
             </div>
             <span className="w-8 shrink-0 text-right tabular-nums text-slate-700">{count}</span>

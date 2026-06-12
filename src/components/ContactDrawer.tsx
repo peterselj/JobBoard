@@ -23,6 +23,8 @@ export default function ContactDrawer({ contactId, onClose }: { contactId: numbe
 function ContactDetail({ contact, onClose }: { contact: Contact; onClose: () => void }) {
   const contactId = contact.id!;
   const links = useLiveQuery(() => db.oppContacts.where('contactId').equals(contactId).toArray(), [contactId]) ?? [];
+  const pathsAsTarget = useLiveQuery(() => db.referralPaths.where('targetContactId').equals(contactId).toArray(), [contactId]) ?? [];
+  const pathsAsBridge = useLiveQuery(() => db.referralPaths.where('viaContactId').equals(contactId).toArray(), [contactId]) ?? [];
   const opps = useLiveQuery(() => db.opportunities.toArray(), []) ?? [];
   const stages = useLiveQuery(() => db.stages.toArray(), []) ?? [];
   const activities = useLiveQuery(
@@ -73,8 +75,8 @@ function ContactDetail({ contact, onClose }: { contact: Contact; onClose: () => 
   };
 
   return (
-    <div className="flex h-full flex-col">
-      <div className="border-b border-slate-200 bg-slate-50 px-6 py-4">
+    <div className="flex min-h-full flex-col">
+      <div className="sticky top-0 z-10 border-b border-slate-200 bg-slate-50 px-6 py-4">
         <div className="flex items-start justify-between">
           <div>
             <h2 className="text-lg font-semibold">{contact.firstName} {contact.lastName}</h2>
@@ -121,17 +123,39 @@ function ContactDetail({ contact, onClose }: { contact: Contact; onClose: () => 
 
         <section>
           <SectionHeader title="Linked opportunities" />
-          {links.length === 0 ? (
+          {links.length === 0 && pathsAsTarget.length === 0 && pathsAsBridge.length === 0 ? (
             <p className="text-sm text-slate-500">Not linked to any opportunities. Link from an opp's detail view.</p>
           ) : (
             <ul className="space-y-2">
+              {pathsAsTarget.map((p) => {
+                const o = oppsById.get(p.oppId);
+                if (!o) return null;
+                const s = stagesById.get(o.stageId);
+                return (
+                  <li key={`t${p.id}`} className="flex items-center justify-between rounded-lg border border-slate-200 px-3 py-2 text-sm">
+                    <span><span className="font-medium">{o.company} — {o.role}</span><span className="ml-2 text-xs text-slate-500">referral target</span></span>
+                    {s && <Badge color="indigo">{s.name}</Badge>}
+                  </li>
+                );
+              })}
+              {pathsAsBridge.map((p) => {
+                const o = oppsById.get(p.oppId);
+                if (!o) return null;
+                const s = stagesById.get(o.stageId);
+                return (
+                  <li key={`b${p.id}`} className="flex items-center justify-between rounded-lg border border-slate-200 px-3 py-2 text-sm">
+                    <span><span className="font-medium">{o.company} — {o.role}</span><span className="ml-2 text-xs text-slate-500">intro bridge</span></span>
+                    {s && <Badge color="indigo">{s.name}</Badge>}
+                  </li>
+                );
+              })}
               {links.map((l) => {
                 const o = oppsById.get(l.oppId);
                 if (!o) return null;
                 const s = stagesById.get(o.stageId);
                 return (
-                  <li key={l.id} className="flex items-center justify-between rounded-lg border border-slate-200 px-3 py-2 text-sm">
-                    <span className="font-medium">{o.company} — {o.role}</span>
+                  <li key={`l${l.id}`} className="flex items-center justify-between rounded-lg border border-slate-200 px-3 py-2 text-sm">
+                    <span><span className="font-medium">{o.company} — {o.role}</span><span className="ml-2 text-xs text-slate-500">{l.role}</span></span>
                     {s && <Badge color="indigo">{s.name}</Badge>}
                   </li>
                 );

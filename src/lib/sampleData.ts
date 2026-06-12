@@ -1,4 +1,4 @@
-import { db, today, type Activity, type Contact, type Opportunity, type OppContact } from '../db';
+import { db, today, type Activity, type Contact, type Opportunity, type OppContact, type ReferralPath } from '../db';
 
 const DAY = 24 * 3600 * 1000;
 
@@ -38,13 +38,18 @@ export async function loadSampleData() {
   const [stripe, , figma, datadog, notion, linear, duolingo] = oppIds;
 
   const links: OppContact[] = [
-    { oppId: stripe, contactId: priya, role: 'target-referrer' },
-    { oppId: figma, contactId: jordan, role: 'referrer' },
-    { oppId: datadog, contactId: maya, role: 'referrer' },
     { oppId: notion, contactId: sam, role: 'recruiter' },
-    { oppId: linear, contactId: alex, role: 'referrer' },
   ];
   await db.oppContacts.bulkAdd(links);
+
+  const paths: ReferralPath[] = [
+    // 2nd-degree chain: Maya (1st) bridges to Priya (2nd) at Stripe
+    { oppId: stripe, targetContactId: priya, viaContactId: maya, status: 'intro-solicited', createdAt: now - 2 * DAY, updatedAt: now - 1 * DAY },
+    { oppId: figma, targetContactId: jordan, viaContactId: null, status: 'chat-booked', createdAt: now - 9 * DAY, updatedAt: now - 4 * DAY },
+    { oppId: datadog, targetContactId: maya, viaContactId: null, status: 'referral-made', createdAt: now - 14 * DAY, updatedAt: now - 8 * DAY },
+    { oppId: linear, targetContactId: alex, viaContactId: null, status: 'referral-made', createdAt: now - 17 * DAY, updatedAt: now - 16 * DAY },
+  ];
+  await db.referralPaths.bulkAdd(paths);
 
   const acts: Activity[] = [
     { oppId: figma, contactId: jordan, type: 'outreach', date: dateStr(9), notes: 'Pinged Jordan on LinkedIn about the Growth PM role', createdAt: now - 9 * DAY },

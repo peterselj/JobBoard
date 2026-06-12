@@ -53,7 +53,7 @@ export interface Contact {
   createdAt: number;
 }
 
-export type OppContactRole = 'target-referrer' | 'referrer' | 'recruiter' | 'interviewer' | 'other';
+export type OppContactRole = 'recruiter' | 'interviewer' | 'other';
 
 export interface OppContact {
   id?: number;
@@ -62,8 +62,34 @@ export interface OppContact {
   role: OppContactRole;
 }
 
+/**
+ * A referral path into an opportunity: the target referrer (often a 2nd-degree
+ * contact at the company), optionally reached via a 1st-degree bridge contact
+ * who can make the intro. A direct 1st-degree target has no bridge.
+ */
+export type PathStatus =
+  | 'identified'
+  | 'intro-solicited'
+  | 'intro-made'
+  | 'chat-booked'
+  | 'referral-made'
+  | 'dead-end';
+
+export interface ReferralPath {
+  id?: number;
+  oppId: number;
+  targetContactId: number;
+  viaContactId?: number | null;
+  status: PathStatus;
+  createdAt: number;
+  updatedAt: number;
+}
+
 export type ActivityType =
   | 'outreach'
+  | 'intro-solicited'
+  | 'intro-made'
+  | 'chat-booked'
   | 'intro-call'
   | 'referral-secured'
   | 'applied'
@@ -84,6 +110,11 @@ export interface Activity {
   createdAt: number;
 }
 
+export interface School {
+  name: string;
+  id: string; // LinkedIn's numeric school ID, used in people-search schoolFilter
+}
+
 export interface Settings {
   id: 'app';
   targets: {
@@ -94,13 +125,16 @@ export interface Settings {
   };
   staleDays: number;
   assumedOppToOffer: number; // percent: what share of new opps eventually become offers
-  schoolSlug: string; // linkedin.com/school/<slug> for alumni search links
+  schools: School[];
 }
 
 // ---------- Labels ----------
 
 export const ACTIVITY_LABELS: Record<ActivityType, string> = {
   'outreach': 'Outreach sent',
+  'intro-solicited': 'Intro solicited',
+  'intro-made': 'Intro made',
+  'chat-booked': 'Chat booked',
   'intro-call': 'Referral convo / intro call',
   'referral-secured': 'Referral secured',
   'applied': 'Applied',
@@ -122,12 +156,23 @@ export const RELATIONSHIP_LABELS: Record<Relationship, string> = {
 };
 
 export const OPP_CONTACT_ROLE_LABELS: Record<OppContactRole, string> = {
-  'target-referrer': 'Target referrer',
-  'referrer': 'Referrer',
   'recruiter': 'Recruiter',
   'interviewer': 'Interviewer',
   'other': 'Other',
 };
+
+export const PATH_STATUS_LABELS: Record<PathStatus, string> = {
+  'identified': 'Identified',
+  'intro-solicited': 'Intro solicited',
+  'intro-made': 'Intro made',
+  'chat-booked': 'Chat booked',
+  'referral-made': 'Referral made ✓',
+  'dead-end': 'Dead end',
+};
+
+export const PATH_STATUS_ORDER: PathStatus[] = [
+  'identified', 'intro-solicited', 'intro-made', 'chat-booked', 'referral-made', 'dead-end',
+];
 
 // ---------- Defaults ----------
 
@@ -149,7 +194,7 @@ export const DEFAULT_SETTINGS: Settings = {
   targets: { newOpps: 15, referralConvos: 5, applications: 10, interviews: 3 },
   staleDays: 7,
   assumedOppToOffer: 2.5,
-  schoolSlug: '',
+  schools: [],
 };
 
 // ---------- Database ----------
@@ -158,6 +203,7 @@ export const db = new Dexie('jobboard') as Dexie & {
   opportunities: EntityTable<Opportunity, 'id'>;
   contacts: EntityTable<Contact, 'id'>;
   oppContacts: EntityTable<OppContact, 'id'>;
+  referralPaths: EntityTable<ReferralPath, 'id'>;
   activities: EntityTable<Activity, 'id'>;
   stages: EntityTable<Stage, 'id'>;
   settings: EntityTable<Settings, 'id'>;
@@ -171,6 +217,31 @@ db.version(1).stores({
   stages: 'id, order',
   settings: 'id',
 });
+
+// v0.2: referral paths (bridge → target chains). Existing referral-ish contact
+// links are converted in place; user data is never dropped.
+db.version(2)
+  .stores({
+    referralPaths: '++id, oppId, targetContactId, viaContactId',
+  })
+  .upgrade(async (tx) => {
+    const links = await tx.table('oppContacts').toArray();
+    const now = Date.now();
+    for (const link of links) {
+      const role = link.role as string;
+      if (role === 'target-referrer' || role === 'referrer') {
+        await tx.table('referralPaths').add({
+          oppId: link.oppId,
+          targetContactId: link.contactId,
+          viaContactId: null,
+          status: role === 'referrer' ? 'referral-made' : 'identified',
+          createdAt: now,
+          updatedAt: now,
+        });
+        await tx.table('oppContacts').delete(link.id);
+      }
+    }
+  });
 
 db.on('populate', (tx) => {
   tx.table('stages').bulkAdd(DEFAULT_STAGES);
@@ -225,9 +296,10 @@ export async function moveOppToStage(oppId: number, stageId: string) {
 }
 
 export async function deleteOpportunity(oppId: number) {
-  await db.transaction('rw', [db.opportunities, db.activities, db.oppContacts], async () => {
+  await db.transaction('rw', [db.opportunities, db.activities, db.oppContacts, db.referralPaths], async () => {
     await db.activities.where('oppId').equals(oppId).delete();
     await db.oppContacts.where('oppId').equals(oppId).delete();
+    await db.referralPaths.where('oppId').equals(oppId).delete();
     await db.opportunities.delete(oppId);
   });
 }
@@ -245,8 +317,10 @@ export async function createContact(
 }
 
 export async function deleteContact(contactId: number) {
-  await db.transaction('rw', [db.contacts, db.oppContacts, db.activities], async () => {
+  await db.transaction('rw', [db.contacts, db.oppContacts, db.activities, db.referralPaths], async () => {
     await db.oppContacts.where('contactId').equals(contactId).delete();
+    await db.referralPaths.where('targetContactId').equals(contactId).delete();
+    await db.referralPaths.where('viaContactId').equals(contactId).modify({ viaContactId: null });
     await db.activities.where('contactId').equals(contactId).modify({ contactId: null });
     await db.contacts.delete(contactId);
   });
@@ -281,8 +355,76 @@ export async function linkContactToOpp(oppId: number, contactId: number, role: O
   }
 }
 
+export async function addReferralPath(
+  oppId: number,
+  targetContactId: number,
+  viaContactId?: number | null,
+) {
+  const existing = await db.referralPaths.where('oppId').equals(oppId).toArray();
+  const via = viaContactId ?? null;
+  if (existing.some((p) => p.targetContactId === targetContactId && (p.viaContactId ?? null) === via)) return;
+  const now = Date.now();
+  await db.referralPaths.add({
+    oppId,
+    targetContactId,
+    viaContactId: via,
+    status: 'identified',
+    createdAt: now,
+    updatedAt: now,
+  });
+  await db.opportunities.update(oppId, { updatedAt: now });
+}
+
+export async function updateReferralPathStatus(pathId: number, status: PathStatus) {
+  const path = await db.referralPaths.get(pathId);
+  if (!path || path.status === status) return;
+  const now = Date.now();
+  await db.referralPaths.update(pathId, { status, updatedAt: now });
+  const [target, via] = await Promise.all([
+    db.contacts.get(path.targetContactId),
+    path.viaContactId ? db.contacts.get(path.viaContactId) : Promise.resolve(undefined),
+  ]);
+  const tName = target ? `${target.firstName} ${target.lastName}`.trim() : 'target';
+  const vName = via ? `${via.firstName} ${via.lastName}`.trim() : null;
+  const log: Partial<Record<PathStatus, { type: ActivityType; note: string }>> = {
+    'intro-solicited': {
+      type: 'intro-solicited',
+      note: vName ? `Asked ${vName} for an intro to ${tName}` : `Reached out to ${tName}`,
+    },
+    'intro-made': {
+      type: 'intro-made',
+      note: vName ? `${vName} made the intro to ${tName}` : `Connected with ${tName}`,
+    },
+    'chat-booked': { type: 'chat-booked', note: `Chat booked with ${tName}` },
+    'referral-made': { type: 'referral-secured', note: `Referral secured from ${tName}` },
+    'dead-end': {
+      type: 'note',
+      note: `Referral path ${vName ? `via ${vName} ` : ''}to ${tName} hit a dead end`,
+    },
+  };
+  const entry = log[status];
+  if (entry) {
+    await logActivity({
+      oppId: path.oppId,
+      contactId: status === 'intro-solicited' && via ? via.id : target?.id,
+      type: entry.type,
+      notes: entry.note,
+    });
+  } else {
+    await db.opportunities.update(path.oppId, { updatedAt: now });
+  }
+}
+
 export async function getSettings(): Promise<Settings> {
-  return (await db.settings.get('app')) ?? DEFAULT_SETTINGS;
+  const stored = await db.settings.get('app');
+  // Merge with defaults so records written by older app versions stay valid.
+  return {
+    ...DEFAULT_SETTINGS,
+    ...stored,
+    id: 'app',
+    targets: { ...DEFAULT_SETTINGS.targets, ...stored?.targets },
+    schools: stored?.schools ?? [],
+  };
 }
 
 export async function saveSettings(changes: Partial<Settings>) {

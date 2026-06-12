@@ -1,6 +1,6 @@
 import { useRef, useState } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
-import { db, saveSettings, type Settings as SettingsType, type Stage } from '../db';
+import { db, saveSettings, type School, type Settings as SettingsType, type Stage } from '../db';
 import { clearAllData, exportBackup, importBackup } from '../lib/backup';
 import { loadSampleData } from '../lib/sampleData';
 import { Button, Field, Input, SectionHeader } from '../components/ui';
@@ -13,6 +13,7 @@ export default function Settings() {
     <div className="mx-auto max-w-3xl space-y-6">
       <StageEditor stages={stages} />
       {settings && <TargetsEditor settings={settings} />}
+      {settings && <SchoolsEditor settings={settings} />}
       <DataSection />
       <SharingSection />
     </div>
@@ -131,17 +132,70 @@ function TargetsEditor({ settings }: { settings: SettingsType }) {
         <Field label="Stale after (days)">
           <Input type="number" min={1} defaultValue={settings.staleDays} onBlur={(e) => saveSettings({ staleDays: Math.max(1, Number(e.target.value) || 7) })} />
         </Field>
-        <Field label="LinkedIn school slug" className="col-span-2">
-          <Input
-            defaultValue={settings.schoolSlug}
-            placeholder="e.g. university-of-michigan"
-            onBlur={(e) => saveSettings({ schoolSlug: e.target.value.trim() })}
-          />
-        </Field>
       </div>
-      <p className="mt-2 text-xs text-slate-400">
-        School slug: the part after linkedin.com/school/ on your school's page — unlocks one-click alumni searches on every opp.
+    </section>
+  );
+}
+
+// ---------- Schools (alumni search) ----------
+
+function SchoolsEditor({ settings }: { settings: SettingsType }) {
+  const schools = settings.schools ?? [];
+  const [name, setName] = useState('');
+  const [schoolId, setSchoolId] = useState('');
+  const [error, setError] = useState('');
+
+  const add = async () => {
+    const cleanName = name.trim();
+    const cleanId = schoolId.trim().replace(/\D/g, '');
+    if (!cleanName || !cleanId) {
+      setError('Both a school name and its numeric LinkedIn ID are needed.');
+      return;
+    }
+    if (schools.some((s) => s.id === cleanId)) {
+      setError('That school ID is already added.');
+      return;
+    }
+    await saveSettings({ schools: [...schools, { name: cleanName, id: cleanId }] });
+    setName('');
+    setSchoolId('');
+    setError('');
+  };
+
+  const remove = async (school: School) => {
+    await saveSettings({ schools: schools.filter((s) => s.id !== school.id) });
+  };
+
+  return (
+    <section className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
+      <SectionHeader title="Your schools (alumni search)" />
+      <p className="mb-3 text-sm text-slate-500">
+        Each school you add becomes a one-click "alumni at this company" search link on every opportunity.
+        Add as many as apply — undergrad, grad school, etc.
       </p>
+      {schools.length > 0 && (
+        <ul className="mb-3 space-y-1.5">
+          {schools.map((s) => (
+            <li key={s.id} className="flex items-center justify-between rounded-lg border border-slate-200 px-3 py-2 text-sm">
+              <span><span className="font-medium">{s.name}</span><span className="ml-2 text-xs text-slate-400">ID {s.id}</span></span>
+              <Button size="sm" variant="ghost" onClick={() => remove(s)}>Remove</Button>
+            </li>
+          ))}
+        </ul>
+      )}
+      <div className="flex items-end gap-2">
+        <Field label="School name"><Input value={name} onChange={(e) => setName(e.target.value)} className="!w-64" placeholder="e.g. Georgetown University" /></Field>
+        <Field label="LinkedIn school ID"><Input value={schoolId} onChange={(e) => setSchoolId(e.target.value)} className="!w-36" placeholder="e.g. 4794" /></Field>
+        <Button variant="primary" onClick={add}>Add school</Button>
+      </div>
+      {error && <p className="mt-2 text-sm text-red-600">{error}</p>}
+      <div className="mt-3 rounded-lg bg-slate-50 p-3 text-xs leading-relaxed text-slate-500">
+        <span className="font-semibold text-slate-600">Finding your school's ID (one time):</span> on LinkedIn, run any
+        people search → <span className="font-medium">All filters → School</span> → select your school →{' '}
+        <span className="font-medium">Show results</span>. The page URL will now contain{' '}
+        <code className="rounded bg-slate-200 px-1">schoolFilter=%5B%22<span className="font-bold">4794</span>%22%5D</code>{' '}
+        — that number is the ID. (4794 is Georgetown, for example.)
+      </div>
     </section>
   );
 }

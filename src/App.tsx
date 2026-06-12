@@ -3,8 +3,10 @@ import { useLiveQuery } from 'dexie-react-hooks';
 import { db } from './db';
 import { expectedOffers, stageMap } from './lib/pipeline';
 import { formatExpectedOffers } from './lib/format';
+import { APP_VERSION } from './version';
 import { Button } from './components/ui';
 import QuickAddOpp from './components/QuickAddOpp';
+import FAQModal from './components/FAQModal';
 import Dashboard from './views/Dashboard';
 import Pipeline from './views/Pipeline';
 import Opportunities from './views/Opportunities';
@@ -24,6 +26,7 @@ type TabId = (typeof TABS)[number]['id'];
 export default function App() {
   const [tab, setTab] = useState<TabId>('dashboard');
   const [adding, setAdding] = useState(false);
+  const [faqOpen, setFaqOpen] = useState(false);
 
   const opps = useLiveQuery(() => db.opportunities.toArray(), []) ?? [];
   const stages = useLiveQuery(() => db.stages.toArray(), []) ?? [];
@@ -33,10 +36,10 @@ export default function App() {
     <div className="flex min-h-screen flex-col">
       <header className="sticky top-0 z-40 border-b border-slate-200 bg-white/90 backdrop-blur">
         <div className="mx-auto flex h-14 max-w-[1400px] items-center gap-6 px-6">
-          <div className="flex items-baseline gap-2">
+          <button onClick={() => setTab('dashboard')} className="flex items-baseline gap-2" title="Back to dashboard">
             <span className="text-lg font-bold tracking-tight">🎯 JobBoard</span>
             <span className="hidden text-xs text-slate-400 xl:inline">referral-first job search CRM</span>
-          </div>
+          </button>
           <nav className="flex gap-1">
             {TABS.map((t) => (
               <button
@@ -70,11 +73,16 @@ export default function App() {
         {tab === 'settings' && <Settings />}
       </main>
 
-      <footer className="border-t border-slate-200 py-3 text-center text-xs text-slate-400">
-        Your data never leaves this browser · back it up in Settings
+      <footer className="flex items-center justify-center gap-2 border-t border-slate-200 py-3 text-xs text-slate-400">
+        <span>JobBoard {APP_VERSION}</span>
+        <span>·</span>
+        <button onClick={() => setFaqOpen(true)} className="font-medium text-indigo-500 hover:underline">FAQ</button>
+        <span>·</span>
+        <span>Your data never leaves this browser — back it up in Settings</span>
       </footer>
 
       {adding && <QuickAddOpp onClose={() => setAdding(false)} />}
+      {faqOpen && <FAQModal onClose={() => setFaqOpen(false)} />}
     </div>
   );
 }

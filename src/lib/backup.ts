@@ -1,6 +1,6 @@
 import { DEFAULT_SETTINGS, DEFAULT_STAGES, db, today } from '../db';
 
-const TABLES = ['opportunities', 'contacts', 'oppContacts', 'activities', 'stages', 'settings'] as const;
+const TABLES = ['opportunities', 'contacts', 'oppContacts', 'referralPaths', 'activities', 'stages', 'settings'] as const;
 
 export async function exportBackup() {
   const data: Record<string, unknown[]> = {};
@@ -40,6 +40,24 @@ export async function importBackup(text: string): Promise<RestoreResult> {
       await db.table(name).clear();
       if (rows.length) await db.table(name).bulkAdd(rows);
       counts[name] = rows.length;
+    }
+    // Backups from v0.1 stored referral targets as contact links — convert
+    // them to referral paths, same as the live-DB migration.
+    const links = await db.oppContacts.toArray();
+    const now = Date.now();
+    for (const link of links) {
+      const role = link.role as string;
+      if (role === 'target-referrer' || role === 'referrer') {
+        await db.referralPaths.add({
+          oppId: link.oppId,
+          targetContactId: link.contactId,
+          viaContactId: null,
+          status: role === 'referrer' ? 'referral-made' : 'identified',
+          createdAt: now,
+          updatedAt: now,
+        });
+        await db.oppContacts.delete(link.id!);
+      }
     }
   });
   return { counts };

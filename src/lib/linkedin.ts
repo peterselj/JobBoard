@@ -85,7 +85,12 @@ export function peopleSearchUrl(company: string, network?: 'F' | 'S'): string {
   return url;
 }
 
-/** Alumni from your school who match the company keyword. */
-export function alumniSearchUrl(schoolSlug: string, company: string): string {
-  return `https://www.linkedin.com/school/${encodeURIComponent(schoolSlug)}/people/?keywords=${encodeURIComponent(company)}`;
+/**
+ * People search filtered to alumni of a school, by LinkedIn's numeric school ID
+ * (e.g. 4794 for Georgetown). Unlike the school-page keyword search, this shows
+ * the actual people. Users grab the ID once from a filtered search URL — see
+ * the instructions in Settings.
+ */
+export function alumniSearchUrl(schoolId: string, company: string): string {
+  return `https://www.linkedin.com/search/results/people/?keywords=${encodeURIComponent(company)}&schoolFilter=${encodeURIComponent(JSON.stringify([schoolId]))}`;
 }

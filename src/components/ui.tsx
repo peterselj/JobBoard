@@ -1,4 +1,14 @@
-import type { ReactNode } from 'react';
+import { useEffect, type ReactNode } from 'react';
+
+function useEscapeKey(onClose: () => void) {
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onClose();
+    };
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+  }, [onClose]);
+}
 
 // ---------- Buttons ----------
 
@@ -87,6 +97,7 @@ export function Select(props: React.SelectHTMLAttributes<HTMLSelectElement>) {
 // ---------- Overlays ----------
 
 export function Modal({ title, onClose, children, wide = false }: { title: string; onClose: () => void; children: ReactNode; wide?: boolean }) {
+  useEscapeKey(onClose);
   return (
     <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-slate-900/40 p-6" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
       <div className={`mt-8 w-full ${wide ? 'max-w-3xl' : 'max-w-lg'} rounded-xl bg-white shadow-2xl`}>
@@ -101,6 +112,7 @@ export function Modal({ title, onClose, children, wide = false }: { title: strin
 }
 
 export function Drawer({ onClose, children }: { onClose: () => void; children: ReactNode }) {
+  useEscapeKey(onClose);
   return (
     <div className="fixed inset-0 z-50 bg-slate-900/30" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
       <div className="absolute inset-y-0 right-0 w-[560px] max-w-full overflow-y-auto bg-white shadow-2xl">
