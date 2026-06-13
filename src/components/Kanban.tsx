@@ -2,8 +2,10 @@ import { useMemo, useState } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { db, moveOppToStage, type Opportunity, type Priority, type Stage } from '../db';
 import { findWarmPaths } from '../lib/companyMatch';
+import { burstConfetti } from '../lib/confetti';
 import { daysAgo, formatWeight, isOverdue } from '../lib/format';
 import { Input, Select } from './ui';
+import QuickAddOpp from './QuickAddOpp';
 
 /**
  * The pipeline board. Active stages share the available width (no horizontal
@@ -17,6 +19,7 @@ export default function Kanban({ onSelect }: { onSelect: (id: number) => void })
   const referralPaths = useLiveQuery(() => db.referralPaths.toArray(), []) ?? [];
   const settings = useLiveQuery(() => db.settings.get('app'), []);
   const [dragOverStage, setDragOverStage] = useState<string | null>(null);
+  const [addToStage, setAddToStage] = useState<string | null>(null);
 
   // Filters
   const [search, setSearch] = useState('');
@@ -75,7 +78,12 @@ export default function Kanban({ onSelect }: { onSelect: (id: number) => void })
     e.preventDefault();
     setDragOverStage(null);
     const id = Number(e.dataTransfer.getData('text/plain'));
-    if (id) moveOppToStage(id, stageId);
+    if (!id) return;
+    const opp = opps.find((o) => o.id === id);
+    moveOppToStage(id, stageId);
+    if (opp && opp.stageId !== stageId && stages.find((s) => s.id === stageId)?.kind === 'won') {
+      burstConfetti(e.clientX, e.clientY);
+    }
   };
 
   return (
@@ -142,7 +150,8 @@ export default function Kanban({ onSelect }: { onSelect: (id: number) => void })
                   {stage.kind === 'active' && list.length > 0 && <span>Σ {weighted.toFixed(2)}</span>}
                 </div>
               </div>
-              <div className="flex-1 space-y-1.5 overflow-y-auto p-1.5 thin-scroll" style={{ minHeight: 100, maxHeight: 480 }}>
+              {/* ~5 cards visible, then the column scrolls */}
+              <div className="flex-1 space-y-1.5 overflow-y-auto p-1.5 thin-scroll" style={{ minHeight: 80, maxHeight: 440 }}>
                 {list.map((opp) => (
                   <OppCard
                     key={opp.id}
@@ -154,10 +163,19 @@ export default function Kanban({ onSelect }: { onSelect: (id: number) => void })
                   />
                 ))}
               </div>
+              <button
+                onClick={() => setAddToStage(stage.id)}
+                title={`Add an opp to ${stage.name}`}
+                className="m-1.5 mt-0 rounded-lg border border-dashed border-slate-300 py-1 text-sm font-medium text-slate-400 transition-colors hover:border-emerald-400 hover:bg-emerald-50/60 hover:text-emerald-700"
+              >
+                +
+              </button>
             </div>
           );
         })}
       </div>
+
+      {addToStage != null && <QuickAddOpp initialStageId={addToStage} onClose={() => setAddToStage(null)} />}
     </div>
   );
 }

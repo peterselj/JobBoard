@@ -4,7 +4,7 @@ import { createOpportunity, db, type Priority } from '../db';
 import { formatWeight } from '../lib/format';
 import { Button, Field, Input, Modal, Select, TextArea } from './ui';
 
-export default function QuickAddOpp({ onClose, onCreated }: { onClose: () => void; onCreated?: (id: number) => void }) {
+export default function QuickAddOpp({ onClose, initialStageId }: { onClose: () => void; initialStageId?: string }) {
   // Bumping the key remounts a clean form ("Save & add another").
   const [formKey, setFormKey] = useState(0);
   const [lastSaved, setLastSaved] = useState('');
@@ -14,8 +14,8 @@ export default function QuickAddOpp({ onClose, onCreated }: { onClose: () => voi
       <AddOppForm
         key={formKey}
         lastSaved={lastSaved}
+        initialStageId={initialStageId}
         onClose={onClose}
-        onCreated={onCreated}
         onSavedAndAddAnother={(company) => {
           setLastSaved(company);
           setFormKey((k) => k + 1);
@@ -26,11 +26,11 @@ export default function QuickAddOpp({ onClose, onCreated }: { onClose: () => voi
 }
 
 function AddOppForm({
-  lastSaved, onClose, onCreated, onSavedAndAddAnother,
+  lastSaved, initialStageId, onClose, onSavedAndAddAnother,
 }: {
   lastSaved: string;
+  initialStageId?: string;
   onClose: () => void;
-  onCreated?: (id: number) => void;
   onSavedAndAddAnother: (company: string) => void;
 }) {
   const stages = useLiveQuery(() => db.stages.orderBy('order').toArray(), []) ?? [];
@@ -40,7 +40,7 @@ function AddOppForm({
   const [location, setLocation] = useState('');
   const [source, setSource] = useState('');
   const [priority, setPriority] = useState<Priority>('B');
-  const [stageId, setStageId] = useState('new-opp');
+  const [stageId, setStageId] = useState(initialStageId ?? 'new-opp');
   const [compMin, setCompMin] = useState('');
   const [compMax, setCompMax] = useState('');
   const [notes, setNotes] = useState('');
@@ -68,7 +68,6 @@ function AddOppForm({
   const submit = async () => {
     const id = await save();
     if (id == null) return;
-    onCreated?.(id);
     onClose();
   };
 

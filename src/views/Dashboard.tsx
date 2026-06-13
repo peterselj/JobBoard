@@ -1,8 +1,7 @@
 import { useMemo, useState } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { db, saveSettings, type Opportunity } from '../db';
-import { expectedOffers, paceToOffer, stageMap, weeklyMetrics, weightedComp, weekStart, type WeekBucket } from '../lib/pipeline';
-import { findWarmPaths } from '../lib/companyMatch';
+import { expectedOffers, paceToOffer, pipelineShape, stageMap, weeklyMetrics, weightedComp, weekStart, type ShapeIssue, type WeekBucket } from '../lib/pipeline';
 import { daysAgo, formatExpectedOffers, formatMoney } from '../lib/format';
 import { Badge, Button, EmptyState, Input, SectionHeader, StatCard } from '../components/ui';
 import Kanban from '../components/Kanban';
@@ -15,8 +14,6 @@ export default function Dashboard() {
   const stages = useLiveQuery(() => db.stages.orderBy('order').toArray(), []) ?? [];
   const activities = useLiveQuery(() => db.activities.toArray(), []) ?? [];
   const contacts = useLiveQuery(() => db.contacts.toArray(), []) ?? [];
-  const oppContacts = useLiveQuery(() => db.oppContacts.toArray(), []) ?? [];
-  const referralPaths = useLiveQuery(() => db.referralPaths.toArray(), []) ?? [];
   const settings = useLiveQuery(() => db.settings.get('app'), []);
   const [selected, setSelected] = useState<number | null>(null);
   const [adding, setAdding] = useState(false);
@@ -39,18 +36,9 @@ export default function Dashboard() {
 
   // Needs attention
   const staleDays = settings?.staleDays ?? 7;
-  const linkedOppIds = useMemo(
-    () => new Set([...oppContacts.map((l) => l.oppId), ...referralPaths.map((p) => p.oppId)]),
-    [oppContacts, referralPaths],
-  );
   const stale = activeOpps.filter((o) => daysAgo(o.updatedAt) >= staleDays);
   const noNextAction = activeOpps.filter((o) => !o.nextAction);
-  const warmAvailable = activeOpps.filter(
-    (o) =>
-      (stagesById.get(o.stageId)?.weight ?? 0) < 2.5 &&
-      !linkedOppIds.has(o.id!) &&
-      findWarmPaths(o.company, contacts).length > 0,
-  );
+  const shapeIssues = useMemo(() => pipelineShape(opps, stagesById), [opps, stagesById]);
 
   if (opps.length === 0 && contacts.length === 0) {
     return (
@@ -77,13 +65,7 @@ export default function Dashboard() {
       <section className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
         <SectionHeader title="Needs attention" />
         <div className="grid grid-cols-3 gap-5">
-          <AttentionList
-            title={`Warm path available (${warmAvailable.length})`}
-            hint="You know someone at these companies — get the referral before (or after) applying."
-            opps={warmAvailable}
-            badge={(o) => <Badge color="green">{findWarmPaths(o.company, contacts).length} contact{findWarmPaths(o.company, contacts).length > 1 ? 's' : ''}</Badge>}
-            onSelect={setSelected}
-          />
+          <ShapeList issues={shapeIssues} />
           <AttentionList
             title={`Stale ${staleDays}+ days (${stale.length})`}
             hint="No activity recently — follow up or close them out."
@@ -281,8 +263,9 @@ function AttentionList({
     <div>
       <h3 className="text-sm font-semibold text-slate-700">{title}</h3>
       <p className="mt-0.5 text-xs text-slate-500">{hint}</p>
-      <ul className="mt-2 space-y-1.5">
-        {opps.slice(0, 6).map((o) => (
+      {/* ~5 rows visible, then the list scrolls */}
+      <ul className="mt-2 max-h-56 space-y-1.5 overflow-y-auto pr-1 thin-scroll">
+        {opps.map((o) => (
           <li key={o.id}>
             <button
               onClick={() => onSelect(o.id!)}
@@ -297,7 +280,31 @@ function AttentionList({
           </li>
         ))}
         {opps.length === 0 && <li className="text-xs text-slate-400">Nothing here 🎉</li>}
-        {opps.length > 6 && <li className="text-xs text-slate-400">+{opps.length - 6} more</li>}
+      </ul>
+    </div>
+  );
+}
+
+function ShapeList({ issues }: { issues: ShapeIssue[] }) {
+  return (
+    <div>
+      <h3 className="text-sm font-semibold text-slate-700">Pipeline shape ({issues.length})</h3>
+      <p className="mt-0.5 text-xs text-slate-500">
+        Keep New Opp : Referral Convo : Applied w/ Referral near 3:1:1 — roughly 15 : 5 : 5.
+      </p>
+      <ul className="mt-2 max-h-56 space-y-1.5 overflow-y-auto pr-1 thin-scroll">
+        {issues.map((issue) => (
+          <li key={issue.title} className="rounded-lg border border-slate-200 px-3 py-2 text-sm">
+            <div className="flex items-center justify-between gap-2">
+              <span className="font-medium">{issue.title}</span>
+              <Badge color={issue.severity === 'red' ? 'red' : 'amber'}>
+                {issue.severity === 'red' ? 'fix now' : 'rebalance'}
+              </Badge>
+            </div>
+            <p className="mt-0.5 text-xs text-slate-500">{issue.detail}</p>
+          </li>
+        ))}
+        {issues.length === 0 && <li className="text-xs text-slate-400">Healthy shape 🎉</li>}
       </ul>
     </div>
   );

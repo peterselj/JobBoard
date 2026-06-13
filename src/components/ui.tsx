@@ -63,11 +63,6 @@ export function Badge({
   );
 }
 
-export function PriorityBadge({ priority }: { priority: 'A' | 'B' | 'C' }) {
-  const color = priority === 'A' ? 'red' : priority === 'B' ? 'amber' : 'slate';
-  return <Badge color={color}>P-{priority}</Badge>;
-}
-
 // ---------- Form fields ----------
 
 export function Field({ label, children, className = '' }: { label: string; children: ReactNode; className?: string }) {

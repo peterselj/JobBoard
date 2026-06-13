@@ -3,11 +3,13 @@ export function formatMoney(n: number): string {
   return `$${Math.round(n)}`;
 }
 
-export function formatCompRange(min?: number | null, max?: number | null): string {
-  if (min != null && max != null) return min === max ? formatMoney(min) : `${formatMoney(min)}–${formatMoney(max)}`;
-  if (min != null) return `${formatMoney(min)}+`;
-  if (max != null) return `up to ${formatMoney(max)}`;
-  return '—';
+/** Local YYYY-MM-DD for `daysBack` days ago (0 = today, 1 = yesterday). */
+export function isoDate(daysBack = 0): string {
+  const d = new Date();
+  d.setDate(d.getDate() - daysBack);
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${d.getFullYear()}-${m}-${day}`;
 }
 
 export function daysAgo(ts: number): number {

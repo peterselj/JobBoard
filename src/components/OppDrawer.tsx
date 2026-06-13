@@ -9,13 +9,22 @@ import {
 } from '../db';
 import { findWarmPaths } from '../lib/companyMatch';
 import { alumniSearchUrl, parseProfileUrl, peopleSearchUrl } from '../lib/linkedin';
-import { formatDate, formatWeight, relativeDays } from '../lib/format';
+import { formatDate, formatWeight, isoDate, relativeDays } from '../lib/format';
 import { Badge, Button, Drawer, Field, Input, Select, SectionHeader, TextArea } from './ui';
 import ContactDrawer from './ContactDrawer';
 
+// Manual logging keeps only the types you'd type by hand; intro-solicited /
+// intro-made / chat-booked / referral-secured are auto-logged when a referral
+// path's status advances, so listing them here just invited double entries.
 const LOGGABLE_TYPES: ActivityType[] = [
-  'outreach', 'intro-solicited', 'intro-made', 'chat-booked', 'intro-call', 'referral-secured',
-  'applied', 'recruiter-screen', 'interview', 'follow-up', 'offer', 'note',
+  'outreach', 'intro-call', 'applied', 'recruiter-screen', 'interview', 'follow-up', 'offer', 'note',
+];
+
+const QUICK_LOGS: { label: string; type: ActivityType; daysBack: number }[] = [
+  { label: 'Outreach sent · today', type: 'outreach', daysBack: 0 },
+  { label: 'Outreach sent · yesterday', type: 'outreach', daysBack: 1 },
+  { label: 'Follow-up · today', type: 'follow-up', daysBack: 0 },
+  { label: 'Applied · today', type: 'applied', daysBack: 0 },
 ];
 
 export default function OppDrawer({ oppId, onClose }: { oppId: number; onClose: () => void }) {
@@ -250,6 +259,18 @@ function OppDetail({ opp, onClose }: { opp: Opportunity; onClose: () => void }) 
         {/* Activity */}
         <section>
           <SectionHeader title="Log activity" />
+          <div className="mb-3 flex flex-wrap gap-1.5">
+            {QUICK_LOGS.map((q) => (
+              <Button
+                key={q.label}
+                size="sm"
+                onClick={() => logActivity({ oppId, type: q.type, date: isoDate(q.daysBack) })}
+              >
+                {q.label}
+              </Button>
+            ))}
+          </div>
+          <div className="mb-1 text-[11px] font-medium uppercase tracking-wide text-slate-400">Custom</div>
           <div className="grid grid-cols-2 gap-2">
             <Select value={actType} onChange={(e) => setActType(e.target.value as ActivityType)}>
               {LOGGABLE_TYPES.map((t) => <option key={t} value={t}>{ACTIVITY_LABELS[t]}</option>)}

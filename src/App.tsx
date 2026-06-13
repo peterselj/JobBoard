@@ -55,6 +55,14 @@ export default function App() {
               Σ {formatExpectedOffers(expOffers)} expected offers
             </span>
             <Button variant="primary" onClick={() => setAdding(true)}>+ Add opp</Button>
+            <button
+              onClick={() => setFaqOpen(true)}
+              title="FAQ — how JobBoard thinks"
+              aria-label="Open FAQ"
+              className="flex h-7 w-7 items-center justify-center rounded-full border border-slate-300 text-sm font-semibold text-slate-500 transition-colors hover:border-emerald-400 hover:text-emerald-700"
+            >
+              ?
+            </button>
           </div>
         </div>
       </header>
