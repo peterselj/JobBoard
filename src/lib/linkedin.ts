@@ -1,79 +1,31 @@
-import Papa from 'papaparse';
-import { db, type Contact } from '../db';
+// ---------- Profile URL parsing ----------
 
-/**
- * LinkedIn lets every user export their own connections as CSV:
- * Settings & Privacy → Data privacy → Get a copy of your data → Connections.
- * The file sometimes begins with a multi-line "Notes:" preamble before the
- * real header row, so we locate the header line first.
- */
-export interface ParsedConnection {
+export interface ParsedProfile {
   firstName: string;
   lastName: string;
   linkedinUrl: string;
-  email: string;
-  company: string;
-  title: string;
-  connectedOn: string;
 }
 
-export function parseConnectionsCsv(text: string): ParsedConnection[] {
-  const lines = text.split(/\r?\n/);
-  const headerIdx = lines.findIndex((l) => l.includes('First Name') && l.includes('Last Name'));
-  if (headerIdx === -1) throw new Error('Could not find the header row — is this a LinkedIn Connections.csv export?');
-  const body = lines.slice(headerIdx).join('\n');
-  const result = Papa.parse<Record<string, string>>(body, { header: true, skipEmptyLines: true });
-  return result.data
-    .map((row) => ({
-      firstName: (row['First Name'] ?? '').trim(),
-      lastName: (row['Last Name'] ?? '').trim(),
-      linkedinUrl: (row['URL'] ?? '').trim(),
-      email: (row['Email Address'] ?? '').trim(),
-      company: (row['Company'] ?? '').trim(),
-      title: (row['Position'] ?? '').trim(),
-      connectedOn: (row['Connected On'] ?? '').trim(),
-    }))
-    .filter((c) => c.firstName || c.lastName);
-}
-
-export interface ImportResult {
-  added: number;
-  skipped: number;
-}
-
-/** Import parsed connections as 1st-degree contacts, deduping against existing ones. */
-export async function importConnections(connections: ParsedConnection[]): Promise<ImportResult> {
-  const existing = await db.contacts.toArray();
-  const byUrl = new Set(existing.map((c) => c.linkedinUrl).filter(Boolean));
-  const byNameCo = new Set(
-    existing.map((c) => `${c.firstName}|${c.lastName}|${c.company ?? ''}`.toLowerCase()),
-  );
-  const now = Date.now();
-  const toAdd: Contact[] = [];
-  let skipped = 0;
-  for (const conn of connections) {
-    const nameKey = `${conn.firstName}|${conn.lastName}|${conn.company}`.toLowerCase();
-    if ((conn.linkedinUrl && byUrl.has(conn.linkedinUrl)) || byNameCo.has(nameKey)) {
-      skipped++;
-      continue;
-    }
-    byUrl.add(conn.linkedinUrl);
-    byNameCo.add(nameKey);
-    toAdd.push({
-      firstName: conn.firstName,
-      lastName: conn.lastName,
-      company: conn.company || undefined,
-      title: conn.title || undefined,
-      email: conn.email || undefined,
-      linkedinUrl: conn.linkedinUrl || undefined,
-      relationship: '1st',
-      source: 'linkedin',
-      connectedOn: conn.connectedOn || undefined,
-      createdAt: now,
-    });
-  }
-  await db.contacts.bulkAdd(toAdd);
-  return { added: toAdd.length, skipped };
+/**
+ * Recognize a pasted LinkedIn profile URL (linkedin.com/in/<slug>) and guess a
+ * name from the slug. Slugs are usually "first-last" plus optional junk like
+ * trailing hex/id segments ("jane-doe-1a2b3c45"), which we drop.
+ */
+export function parseProfileUrl(text: string): ParsedProfile | null {
+  const m = text.trim().match(/(?:https?:\/\/)?(?:[\w-]+\.)?linkedin\.com\/in\/([^/?#\s]+)/i);
+  if (!m) return null;
+  const slug = decodeURIComponent(m[1]);
+  const parts = slug
+    .split('-')
+    .filter((p) => p && !/^\d+$/.test(p) && !(/\d/.test(p) && p.length >= 5));
+  const cap = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
+  const firstName = parts.length ? cap(parts[0]) : slug;
+  const lastName = parts.slice(1).map(cap).join(' ');
+  return {
+    firstName,
+    lastName,
+    linkedinUrl: `https://www.linkedin.com/in/${m[1]}`,
+  };
 }
 
 // ---------- Deep links into LinkedIn's own search (ToS-safe, no scraping) ----------

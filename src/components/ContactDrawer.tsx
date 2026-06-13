@@ -110,7 +110,7 @@ function ContactDetail({ contact, onClose }: { contact: Contact; onClose: () => 
             <div className="flex gap-2">
               <Input value={draft.linkedinUrl} onChange={set('linkedinUrl')} />
               {draft.linkedinUrl && (
-                <a href={draft.linkedinUrl} target="_blank" rel="noreferrer" className="shrink-0 rounded-md border border-slate-300 bg-white px-2.5 py-1.5 text-sm text-indigo-600 hover:bg-slate-50">Open ↗</a>
+                <a href={draft.linkedinUrl} target="_blank" rel="noreferrer" className="shrink-0 rounded-md border border-slate-300 bg-white px-2.5 py-1.5 text-sm text-emerald-700 hover:bg-slate-50">Open ↗</a>
               )}
             </div>
           </Field>
@@ -134,7 +134,7 @@ function ContactDetail({ contact, onClose }: { contact: Contact; onClose: () => 
                 return (
                   <li key={`t${p.id}`} className="flex items-center justify-between rounded-lg border border-slate-200 px-3 py-2 text-sm">
                     <span><span className="font-medium">{o.company} — {o.role}</span><span className="ml-2 text-xs text-slate-500">referral target</span></span>
-                    {s && <Badge color="indigo">{s.name}</Badge>}
+                    {s && <Badge color="emerald">{s.name}</Badge>}
                   </li>
                 );
               })}
@@ -145,7 +145,7 @@ function ContactDetail({ contact, onClose }: { contact: Contact; onClose: () => 
                 return (
                   <li key={`b${p.id}`} className="flex items-center justify-between rounded-lg border border-slate-200 px-3 py-2 text-sm">
                     <span><span className="font-medium">{o.company} — {o.role}</span><span className="ml-2 text-xs text-slate-500">intro bridge</span></span>
-                    {s && <Badge color="indigo">{s.name}</Badge>}
+                    {s && <Badge color="emerald">{s.name}</Badge>}
                   </li>
                 );
               })}
@@ -156,7 +156,7 @@ function ContactDetail({ contact, onClose }: { contact: Contact; onClose: () => 
                 return (
                   <li key={`l${l.id}`} className="flex items-center justify-between rounded-lg border border-slate-200 px-3 py-2 text-sm">
                     <span><span className="font-medium">{o.company} — {o.role}</span><span className="ml-2 text-xs text-slate-500">{l.role}</span></span>
-                    {s && <Badge color="indigo">{s.name}</Badge>}
+                    {s && <Badge color="emerald">{s.name}</Badge>}
                   </li>
                 );
               })}

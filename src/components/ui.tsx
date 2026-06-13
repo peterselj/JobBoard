@@ -15,7 +15,7 @@ function useEscapeKey(onClose: () => void) {
 type ButtonVariant = 'primary' | 'secondary' | 'ghost' | 'danger';
 
 const BUTTON_STYLES: Record<ButtonVariant, string> = {
-  primary: 'bg-indigo-600 text-white hover:bg-indigo-700 shadow-sm',
+  primary: 'bg-emerald-700 text-white hover:bg-emerald-800 shadow-sm',
   secondary: 'bg-white text-slate-700 border border-slate-300 hover:bg-slate-50 shadow-sm',
   ghost: 'text-slate-600 hover:bg-slate-200/70',
   danger: 'bg-white text-red-600 border border-red-300 hover:bg-red-50',
@@ -44,13 +44,13 @@ export function Badge({
   children,
   title,
 }: {
-  color?: 'slate' | 'indigo' | 'green' | 'amber' | 'red' | 'sky';
+  color?: 'slate' | 'emerald' | 'green' | 'amber' | 'red' | 'sky';
   children: ReactNode;
   title?: string;
 }) {
   const colors: Record<string, string> = {
     slate: 'bg-slate-100 text-slate-700 ring-slate-200',
-    indigo: 'bg-indigo-50 text-indigo-700 ring-indigo-200',
+    emerald: 'bg-emerald-50 text-emerald-700 ring-emerald-200',
     green: 'bg-green-50 text-green-700 ring-green-200',
     amber: 'bg-amber-50 text-amber-800 ring-amber-200',
     red: 'bg-red-50 text-red-700 ring-red-200',
@@ -80,7 +80,7 @@ export function Field({ label, children, className = '' }: { label: string; chil
 }
 
 const inputCls =
-  'w-full rounded-md border border-slate-300 bg-white px-2.5 py-1.5 text-sm shadow-sm placeholder:text-slate-400 focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500';
+  'w-full rounded-md border border-slate-300 bg-white px-2.5 py-1.5 text-sm shadow-sm placeholder:text-slate-400 focus:border-emerald-600 focus:outline-none focus:ring-1 focus:ring-emerald-600';
 
 export function Input(props: React.InputHTMLAttributes<HTMLInputElement>) {
   return <input {...props} className={`${inputCls} ${props.className ?? ''}`} />;
@@ -126,9 +126,9 @@ export function Drawer({ onClose, children }: { onClose: () => void; children: R
 
 export function StatCard({ label, value, sub, accent = false }: { label: string; value: ReactNode; sub?: ReactNode; accent?: boolean }) {
   return (
-    <div className={`rounded-xl border p-4 shadow-sm ${accent ? 'border-indigo-200 bg-indigo-50/60' : 'border-slate-200 bg-white'}`}>
+    <div className={`rounded-xl border p-4 shadow-sm ${accent ? 'border-emerald-200 bg-emerald-50/60' : 'border-slate-200 bg-white'}`}>
       <div className="text-xs font-medium uppercase tracking-wide text-slate-500">{label}</div>
-      <div className={`mt-1 text-3xl font-bold tabular-nums ${accent ? 'text-indigo-700' : 'text-slate-900'}`}>{value}</div>
+      <div className={`mt-1 text-3xl font-bold tabular-nums ${accent ? 'text-emerald-800' : 'text-slate-900'}`}>{value}</div>
       {sub && <div className="mt-1 text-xs text-slate-500">{sub}</div>}
     </div>
   );

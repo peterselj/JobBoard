@@ -8,9 +8,10 @@ import {
   type PathStatus, type Priority, type Relationship,
 } from '../db';
 import { findWarmPaths } from '../lib/companyMatch';
-import { alumniSearchUrl, peopleSearchUrl } from '../lib/linkedin';
+import { alumniSearchUrl, parseProfileUrl, peopleSearchUrl } from '../lib/linkedin';
 import { formatDate, formatWeight, relativeDays } from '../lib/format';
 import { Badge, Button, Drawer, Field, Input, Select, SectionHeader, TextArea } from './ui';
+import ContactDrawer from './ContactDrawer';
 
 const LOGGABLE_TYPES: ActivityType[] = [
   'outreach', 'intro-solicited', 'intro-made', 'chat-booked', 'intro-call', 'referral-secured',
@@ -41,6 +42,7 @@ function OppDetail({ opp, onClose }: { opp: Opportunity; onClose: () => void }) 
 
   const stage = stages.find((s) => s.id === opp.stageId);
   const schools = settings?.schools ?? [];
+  const [viewContactId, setViewContactId] = useState<number | null>(null);
   const contactsById = useMemo(() => new Map(allContacts.map((c) => [c.id!, c])), [allContacts]);
   const usedContactIds = useMemo(
     () => new Set([...paths.map((p) => p.targetContactId), ...otherLinks.map((l) => l.contactId)]),
@@ -140,7 +142,7 @@ function OppDetail({ opp, onClose }: { opp: Opportunity; onClose: () => void }) 
             <option value="B">Priority B</option>
             <option value="C">Priority C</option>
           </Select>
-          {stage && <Badge color="indigo">{formatWeight(stage.weight)} weight</Badge>}
+          {stage && <Badge color="emerald">{formatWeight(stage.weight)} weight</Badge>}
         </div>
       </div>
 
@@ -151,7 +153,7 @@ function OppDetail({ opp, onClose }: { opp: Opportunity; onClose: () => void }) 
             <div className="flex gap-2">
               <Input value={draft.jobUrl} onChange={set('jobUrl')} placeholder="https://…" />
               {draft.jobUrl && (
-                <a href={draft.jobUrl} target="_blank" rel="noreferrer" className="shrink-0 rounded-md border border-slate-300 bg-white px-2.5 py-1.5 text-sm text-indigo-600 hover:bg-slate-50">Open ↗</a>
+                <a href={draft.jobUrl} target="_blank" rel="noreferrer" className="shrink-0 rounded-md border border-slate-300 bg-white px-2.5 py-1.5 text-sm text-emerald-700 hover:bg-slate-50">Open ↗</a>
               )}
             </div>
           </Field>
@@ -179,20 +181,21 @@ function OppDetail({ opp, onClose }: { opp: Opportunity; onClose: () => void }) 
           contactsById={contactsById}
           allContacts={allContacts}
           warmPaths={warmPaths}
+          onOpenContact={setViewContactId}
         />
 
         {/* LinkedIn search links */}
         <section>
           <SectionHeader title="Find more paths on LinkedIn" />
           <div className="flex flex-wrap gap-x-4 gap-y-1.5">
-            <a className="text-xs font-medium text-indigo-600 hover:underline" target="_blank" rel="noreferrer" href={peopleSearchUrl(opp.company, 'S')}>
+            <a className="text-xs font-medium text-emerald-700 hover:underline" target="_blank" rel="noreferrer" href={peopleSearchUrl(opp.company, 'S')}>
               2nd-degree at {opp.company} ↗
             </a>
-            <a className="text-xs font-medium text-indigo-600 hover:underline" target="_blank" rel="noreferrer" href={peopleSearchUrl(opp.company, 'F')}>
+            <a className="text-xs font-medium text-emerald-700 hover:underline" target="_blank" rel="noreferrer" href={peopleSearchUrl(opp.company, 'F')}>
               1st-degree ↗
             </a>
             {schools.map((school) => (
-              <a key={school.id} className="text-xs font-medium text-indigo-600 hover:underline" target="_blank" rel="noreferrer" href={alumniSearchUrl(school.id, opp.company)}>
+              <a key={school.id} className="text-xs font-medium text-emerald-700 hover:underline" target="_blank" rel="noreferrer" href={alumniSearchUrl(school.id, opp.company)}>
                 {school.name} alumni ↗
               </a>
             ))}
@@ -215,7 +218,9 @@ function OppDetail({ opp, onClose }: { opp: Opportunity; onClose: () => void }) 
               return (
                 <li key={link.id} className="flex items-center justify-between gap-2 rounded-lg border border-slate-200 px-3 py-2">
                   <div className="min-w-0 text-sm">
-                    <span className="font-medium">{c.firstName} {c.lastName}</span>
+                    <button onClick={() => setViewContactId(c.id!)} className="font-medium hover:text-emerald-700 hover:underline">
+                      {c.firstName} {c.lastName}
+                    </button>
                     {c.title && <span className="ml-2 text-xs text-slate-500">{c.title}</span>}
                   </div>
                   <div className="flex items-center gap-2">
@@ -263,7 +268,7 @@ function OppDetail({ opp, onClose }: { opp: Opportunity; onClose: () => void }) 
           <ul className="mt-4 space-y-2 border-l-2 border-slate-200 pl-4">
             {activities.map((a: Activity) => (
               <li key={a.id} className="relative text-sm">
-                <span className="absolute -left-[21px] top-1.5 h-2 w-2 rounded-full bg-indigo-400" />
+                <span className="absolute -left-[21px] top-1.5 h-2 w-2 rounded-full bg-emerald-500" />
                 <span className="font-medium">{ACTIVITY_LABELS[a.type] ?? a.type}</span>
                 <span className="ml-2 text-xs text-slate-500">{formatDate(a.date)}</span>
                 {a.contactId && contactsById.get(a.contactId) && (
@@ -285,6 +290,8 @@ function OppDetail({ opp, onClose }: { opp: Opportunity; onClose: () => void }) 
           </div>
         </section>
       </div>
+
+      {viewContactId != null && <ContactDrawer contactId={viewContactId} onClose={() => setViewContactId(null)} />}
     </div>
   );
 }
@@ -292,7 +299,7 @@ function OppDetail({ opp, onClose }: { opp: Opportunity; onClose: () => void }) 
 // ---------- Referral paths ----------
 
 function ReferralPathsSection({
-  oppId, company, paths, contactsById, allContacts, warmPaths,
+  oppId, company, paths, contactsById, allContacts, warmPaths, onOpenContact,
 }: {
   oppId: number;
   company: string;
@@ -300,6 +307,7 @@ function ReferralPathsSection({
   contactsById: Map<number, Contact>;
   allContacts: Contact[];
   warmPaths: Contact[];
+  onOpenContact: (id: number) => void;
 }) {
   const [bridgeId, setBridgeId] = useState<number | null>(null);
   const [targetId, setTargetId] = useState<number | null>(null);
@@ -344,9 +352,14 @@ function ReferralPathsSection({
               <li key={p.id} className={`flex items-center justify-between gap-2 rounded-lg border px-3 py-2 ${p.status === 'dead-end' ? 'border-slate-200 bg-slate-50 opacity-60' : 'border-slate-200'}`}>
                 <div className="min-w-0 text-sm">
                   {v && (
-                    <span className="text-slate-600">{v.firstName} {v.lastName} <span className="mx-1 text-slate-400">→</span></span>
+                    <span className="text-slate-600">
+                      <button onClick={() => onOpenContact(v.id!)} className="hover:text-emerald-700 hover:underline">{v.firstName} {v.lastName}</button>
+                      <span className="mx-1 text-slate-400">→</span>
+                    </span>
                   )}
-                  <span className="font-medium">{t.firstName} {t.lastName}</span>
+                  <button onClick={() => onOpenContact(t.id!)} className="font-medium hover:text-emerald-700 hover:underline">
+                    {t.firstName} {t.lastName}
+                  </button>
                   <span className="ml-2"><Badge color="sky">{RELATIONSHIP_LABELS[t.relationship]}</Badge></span>
                 </div>
                 <div className="flex shrink-0 items-center gap-1.5">
@@ -396,7 +409,7 @@ function ReferralPathsSection({
           <Button variant="primary" size="sm" disabled={!targetId} onClick={addPath}>Add path</Button>
         </div>
         <p className="mt-1.5 text-[11px] text-slate-400">
-          Type a name and pick "create" if they're not in your contacts yet (e.g. a 2nd-degree person you found on LinkedIn).
+          Type a name — or paste their LinkedIn profile URL — and pick "create" if they're not in your contacts yet.
         </p>
       </div>
 
@@ -437,7 +450,8 @@ function ReferralPathsSection({
       )}
       {paths.length === 0 && warmPaths.length === 0 && (
         <p className="mt-2 text-sm text-slate-500">
-          No known contacts at {company} yet — import your LinkedIn connections (Contacts tab) or use the search links below.
+          No known contacts at {company} yet — find your person with the LinkedIn search links below, then paste
+          their profile URL above.
         </p>
       )}
     </section>
@@ -446,9 +460,9 @@ function ReferralPathsSection({
 
 function SelectedChip({ label, onClear }: { label: string; onClear: () => void }) {
   return (
-    <span className="inline-flex items-center justify-between gap-1 rounded-md bg-indigo-50 px-2.5 py-1.5 text-sm font-medium text-indigo-800 ring-1 ring-inset ring-indigo-200">
+    <span className="inline-flex items-center justify-between gap-1 rounded-md bg-emerald-50 px-2.5 py-1.5 text-sm font-medium text-emerald-800 ring-1 ring-inset ring-emerald-200">
       <span className="truncate">{label}</span>
-      <button onClick={onClear} className="text-indigo-400 hover:text-indigo-700" aria-label="Clear">✕</button>
+      <button onClick={onClear} className="text-emerald-400 hover:text-emerald-700" aria-label="Clear">✕</button>
     </span>
   );
 }
@@ -464,20 +478,30 @@ function ContactPicker({
   createMeta?: { relationship: Relationship; company?: string };
 }) {
   const [q, setQ] = useState('');
+  const profile = useMemo(() => parseProfileUrl(q), [q]);
   const matches = useMemo(() => {
     const query = q.trim().toLowerCase();
-    if (!query) return [];
+    if (!query || profile) return [];
     return contacts
       .filter((c) => !exclude?.has(c.id!) && `${c.firstName} ${c.lastName} ${c.company ?? ''}`.toLowerCase().includes(query))
       .slice(0, 6);
-  }, [q, contacts, exclude]);
+  }, [q, contacts, exclude, profile]);
   const showCreate = !!createMeta && q.trim().length > 1;
 
   const create = async () => {
+    // A pasted LinkedIn profile URL creates the contact with the URL attached,
+    // guessing the name from the slug (editable later via the contact drawer).
+    const existing = profile && contacts.find((c) => c.linkedinUrl === profile.linkedinUrl);
+    if (existing) {
+      setQ('');
+      onPick(existing.id!);
+      return;
+    }
     const parts = q.trim().split(/\s+/);
     const id = await createContact({
-      firstName: parts[0],
-      lastName: parts.slice(1).join(' '),
+      firstName: profile ? profile.firstName : parts[0],
+      lastName: profile ? profile.lastName : parts.slice(1).join(' '),
+      linkedinUrl: profile?.linkedinUrl,
       relationship: createMeta!.relationship,
       company: createMeta!.company,
     });
@@ -493,7 +517,7 @@ function ContactPicker({
           {matches.map((c) => (
             <li key={c.id}>
               <button
-                className="flex w-full items-center justify-between px-3 py-2 text-left text-sm hover:bg-indigo-50"
+                className="flex w-full items-center justify-between px-3 py-2 text-left text-sm hover:bg-emerald-50"
                 onClick={() => { setQ(''); onPick(c.id!); }}
               >
                 <span>{c.firstName} {c.lastName}</span>
@@ -503,8 +527,10 @@ function ContactPicker({
           ))}
           {showCreate && (
             <li className="border-t border-slate-100">
-              <button className="w-full px-3 py-2 text-left text-sm font-medium text-indigo-600 hover:bg-indigo-50" onClick={create}>
-                + Create "{q.trim()}"{createMeta?.company ? ` at ${createMeta.company}` : ''}
+              <button className="w-full px-3 py-2 text-left text-sm font-medium text-emerald-700 hover:bg-emerald-50" onClick={create}>
+                {profile
+                  ? `+ Create "${`${profile.firstName} ${profile.lastName}`.trim()}" from LinkedIn URL`
+                  : `+ Create "${q.trim()}"${createMeta?.company ? ` at ${createMeta.company}` : ''}`}
               </button>
             </li>
           )}

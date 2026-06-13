@@ -5,6 +5,7 @@ import { expectedOffers, paceToOffer, stageMap, weeklyMetrics, weightedComp, wee
 import { findWarmPaths } from '../lib/companyMatch';
 import { daysAgo, formatExpectedOffers, formatMoney } from '../lib/format';
 import { Badge, Button, EmptyState, Input, SectionHeader, StatCard } from '../components/ui';
+import Kanban from '../components/Kanban';
 import OppDrawer from '../components/OppDrawer';
 import QuickAddOpp from '../components/QuickAddOpp';
 import { loadSampleData } from '../lib/sampleData';
@@ -58,7 +59,7 @@ export default function Dashboard() {
           <p className="mx-auto max-w-lg">
             A job search is a sales pipeline: most opportunities won't close, so the winning move is to run
             <span className="font-medium"> more</span> of them, referral-first, and track every one. Start by adding
-            an opportunity, importing your LinkedIn connections — or load sample data to look around.
+            an opportunity — or load sample data to look around.
           </p>
           <div className="mt-5 flex justify-center gap-2">
             <Button variant="primary" onClick={() => setAdding(true)}>+ Add your first opportunity</Button>
@@ -72,72 +73,6 @@ export default function Dashboard() {
 
   return (
     <div className="space-y-6">
-      {/* Stat row */}
-      <div className="grid grid-cols-4 gap-4">
-        <StatCard
-          accent
-          label="Expected offers in pipeline"
-          value={formatExpectedOffers(expOffers)}
-          sub={expOffers < 1 ? 'Rule of thumb: keep this ≥ 1.0 — ideally 2–3' : 'Healthy! Keep feeding the top of funnel'}
-        />
-        <StatCard label="Active opportunities" value={activeOpps.length} sub={`${opps.length - activeOpps.length} closed`} />
-        <StatCard label="In interviews" value={lateStage.length} sub="At recruiter screen or beyond" />
-        <StatCard label="Weighted comp value" value={expComp > 0 ? formatMoney(expComp) : '—'} sub="Σ comp midpoint × stage weight" />
-      </div>
-
-      <div className="grid grid-cols-2 gap-6">
-        {/* Funnel */}
-        <section className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
-          <SectionHeader title="Pipeline by stage" />
-          <Funnel opps={opps} stagesByIdSize={stages} onSelect={setSelected} />
-        </section>
-
-        {/* Calculator */}
-        <section className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
-          <SectionHeader title="What it takes" />
-          <div className="flex flex-wrap items-end gap-4 text-sm">
-            <label className="block">
-              <span className="mb-1 block text-xs font-medium uppercase tracking-wide text-slate-500">Offer within (weeks)</span>
-              <Input type="number" min={1} value={weeksRemaining} onChange={(e) => setWeeksRemaining(Math.max(1, Number(e.target.value) || 1))} className="!w-24" />
-            </label>
-            <label className="block">
-              <span className="mb-1 block text-xs font-medium uppercase tracking-wide text-slate-500">% of opps that close</span>
-              <Input
-                type="number" min={0.1} step={0.1} value={conversionPct}
-                onChange={(e) => saveSettings({ assumedOppToOffer: Math.max(0.1, Number(e.target.value) || 0.1) })}
-                className="!w-24"
-              />
-            </label>
-          </div>
-          <div className="mt-4 rounded-lg bg-indigo-50 p-4 text-sm text-indigo-900">
-            {pace.oppsNeededTotal === 0 ? (
-              <p>Your pipeline already carries ≥ 1 expected offer. Keep advancing what you have.</p>
-            ) : (
-              <p>
-                To carry a full expected offer you need about{' '}
-                <span className="font-bold">{pace.oppsNeededTotal} more opportunities</span> — that's{' '}
-                <span className="font-bold">{pace.oppsPerWeek < 10 ? pace.oppsPerWeek.toFixed(1) : Math.ceil(pace.oppsPerWeek)} new opps/week</span>{' '}
-                for {weeksRemaining} weeks. Your recent pace: {recentPace.toFixed(1)}/week.
-              </p>
-            )}
-          </div>
-        </section>
-      </div>
-
-      {/* Weekly activity */}
-      <section className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
-        <SectionHeader title="Weekly activity (last 8 weeks)" />
-        <WeeklyChart weeks={weeks} />
-        {settings && thisWeek && (
-          <div className="mt-4 grid grid-cols-4 gap-4">
-            <TargetBar label="New opps" value={thisWeek.newOpps} target={settings.targets.newOpps} color="bg-indigo-500" />
-            <TargetBar label="Referral convos" value={thisWeek.referralConvos} target={settings.targets.referralConvos} color="bg-green-500" />
-            <TargetBar label="Applications" value={thisWeek.applications} target={settings.targets.applications} color="bg-sky-500" />
-            <TargetBar label="Interviews" value={thisWeek.interviews} target={settings.targets.interviews} color="bg-amber-500" />
-          </div>
-        )}
-      </section>
-
       {/* Needs attention */}
       <section className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
         <SectionHeader title="Needs attention" />
@@ -166,6 +101,78 @@ export default function Dashboard() {
         </div>
       </section>
 
+      {/* Stat row */}
+      <div className="grid grid-cols-4 gap-4">
+        <StatCard
+          accent
+          label="Expected offers in pipeline"
+          value={formatExpectedOffers(expOffers)}
+          sub={expOffers < 1 ? 'Rule of thumb: keep this ≥ 1.0 — ideally 2–3' : 'Healthy! Keep feeding the top of funnel'}
+        />
+        <StatCard label="Active opportunities" value={activeOpps.length} sub={`${opps.length - activeOpps.length} closed`} />
+        <StatCard label="In interviews" value={lateStage.length} sub="At recruiter screen or beyond" />
+        <StatCard label="Weighted comp value" value={expComp > 0 ? formatMoney(expComp) : '—'} sub="Σ comp midpoint × stage weight" />
+      </div>
+
+      {/* Kanban board */}
+      <section className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
+        <SectionHeader title="Pipeline" />
+        <Kanban onSelect={setSelected} />
+      </section>
+
+      <div className="grid grid-cols-2 gap-6">
+        {/* Funnel */}
+        <section className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
+          <SectionHeader title="Pipeline by stage" />
+          <Funnel opps={opps} stagesByIdSize={stages} onSelect={setSelected} />
+        </section>
+
+        {/* Calculator */}
+        <section className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
+          <SectionHeader title="What it takes" />
+          <div className="flex flex-wrap items-end gap-4 text-sm">
+            <label className="block">
+              <span className="mb-1 block text-xs font-medium uppercase tracking-wide text-slate-500">Offer within (weeks)</span>
+              <Input type="number" min={1} value={weeksRemaining} onChange={(e) => setWeeksRemaining(Math.max(1, Number(e.target.value) || 1))} className="!w-24" />
+            </label>
+            <label className="block">
+              <span className="mb-1 block text-xs font-medium uppercase tracking-wide text-slate-500">% of opps that close</span>
+              <Input
+                type="number" min={0.1} step={0.1} value={conversionPct}
+                onChange={(e) => saveSettings({ assumedOppToOffer: Math.max(0.1, Number(e.target.value) || 0.1) })}
+                className="!w-24"
+              />
+            </label>
+          </div>
+          <div className="mt-4 rounded-lg bg-emerald-50 p-4 text-sm text-emerald-900">
+            {pace.oppsNeededTotal === 0 ? (
+              <p>Your pipeline already carries ≥ 1 expected offer. Keep advancing what you have.</p>
+            ) : (
+              <p>
+                To carry a full expected offer you need about{' '}
+                <span className="font-bold">{pace.oppsNeededTotal} more opportunities</span> — that's{' '}
+                <span className="font-bold">{pace.oppsPerWeek < 10 ? pace.oppsPerWeek.toFixed(1) : Math.ceil(pace.oppsPerWeek)} new opps/week</span>{' '}
+                for {weeksRemaining} weeks. Your recent pace: {recentPace.toFixed(1)}/week.
+              </p>
+            )}
+          </div>
+        </section>
+      </div>
+
+      {/* Weekly activity */}
+      <section className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
+        <SectionHeader title="Weekly activity (last 8 weeks)" />
+        <WeeklyChart weeks={weeks} />
+        {settings && thisWeek && (
+          <div className="mt-4 grid grid-cols-4 gap-4">
+            <TargetBar label="New opps" value={thisWeek.newOpps} target={settings.targets.newOpps} color="bg-emerald-600" />
+            <TargetBar label="Referral convos" value={thisWeek.referralConvos} target={settings.targets.referralConvos} color="bg-teal-500" />
+            <TargetBar label="Applications" value={thisWeek.applications} target={settings.targets.applications} color="bg-sky-500" />
+            <TargetBar label="Interviews" value={thisWeek.interviews} target={settings.targets.interviews} color="bg-amber-500" />
+          </div>
+        )}
+      </section>
+
       {selected != null && <OppDrawer oppId={selected} onClose={() => setSelected(null)} />}
       {adding && <QuickAddOpp onClose={() => setAdding(false)} />}
     </div>
@@ -192,7 +199,7 @@ function Funnel({ opps, stagesByIdSize: stages, onSelect }: { opps: Opportunity[
             <span className="w-36 shrink-0 truncate text-slate-600">{s.name}</span>
             <div className="h-5 flex-1 rounded bg-slate-100">
               <div
-                className={`h-5 rounded ${s.kind === 'won' ? 'bg-green-500' : s.kind === 'lost' ? 'bg-slate-300' : 'bg-indigo-500'}`}
+                className={`h-5 rounded ${s.kind === 'won' ? 'bg-emerald-700' : s.kind === 'lost' ? 'bg-slate-300' : 'bg-emerald-500'}`}
                 style={{ width: `${Math.min((count / max) * 100, 100)}%`, minWidth: count > 0 ? 8 : 0 }}
               />
             </div>
@@ -209,8 +216,8 @@ function Funnel({ opps, stagesByIdSize: stages, onSelect }: { opps: Opportunity[
 
 function WeeklyChart({ weeks }: { weeks: WeekBucket[] }) {
   const series = [
-    { key: 'newOpps' as const, label: 'New opps', color: 'bg-indigo-500' },
-    { key: 'referralConvos' as const, label: 'Referral convos', color: 'bg-green-500' },
+    { key: 'newOpps' as const, label: 'New opps', color: 'bg-emerald-600' },
+    { key: 'referralConvos' as const, label: 'Referral convos', color: 'bg-teal-500' },
     { key: 'applications' as const, label: 'Applications', color: 'bg-sky-500' },
     { key: 'interviews' as const, label: 'Interviews', color: 'bg-amber-500' },
   ];
@@ -220,7 +227,7 @@ function WeeklyChart({ weeks }: { weeks: WeekBucket[] }) {
     <div>
       <div className="flex items-end gap-2">
         {weeks.map((w) => (
-          <div key={w.start} className={`flex-1 rounded-lg p-2 ${w.start === currentWeekStart ? 'bg-indigo-50/70' : ''}`}>
+          <div key={w.start} className={`flex-1 rounded-lg p-2 ${w.start === currentWeekStart ? 'bg-emerald-50/70' : ''}`}>
             <div className="flex h-24 items-end justify-center gap-1">
               {series.map((s) => (
                 <div
@@ -279,7 +286,7 @@ function AttentionList({
           <li key={o.id}>
             <button
               onClick={() => onSelect(o.id!)}
-              className="flex w-full items-center justify-between gap-2 rounded-lg border border-slate-200 px-3 py-2 text-left text-sm hover:border-indigo-300 hover:bg-indigo-50/40"
+              className="flex w-full items-center justify-between gap-2 rounded-lg border border-slate-200 px-3 py-2 text-left text-sm hover:border-emerald-300 hover:bg-emerald-50/40"
             >
               <span className="min-w-0 truncate">
                 <span className="font-medium">{o.company}</span>

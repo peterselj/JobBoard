@@ -8,16 +8,10 @@ import { Button } from './components/ui';
 import QuickAddOpp from './components/QuickAddOpp';
 import FAQModal from './components/FAQModal';
 import Dashboard from './views/Dashboard';
-import Pipeline from './views/Pipeline';
-import Opportunities from './views/Opportunities';
-import Contacts from './views/Contacts';
 import Settings from './views/Settings';
 
 const TABS = [
   { id: 'dashboard', label: 'Dashboard' },
-  { id: 'pipeline', label: 'Pipeline' },
-  { id: 'opportunities', label: 'Opportunities' },
-  { id: 'contacts', label: 'Contacts' },
   { id: 'settings', label: 'Settings' },
 ] as const;
 
@@ -46,7 +40,7 @@ export default function App() {
                 key={t.id}
                 onClick={() => setTab(t.id)}
                 className={`rounded-md px-3 py-1.5 text-sm font-medium transition-colors ${
-                  tab === t.id ? 'bg-indigo-600 text-white' : 'text-slate-600 hover:bg-slate-100'
+                  tab === t.id ? 'bg-emerald-700 text-white' : 'text-slate-600 hover:bg-slate-100'
                 }`}
               >
                 {t.label}
@@ -55,7 +49,7 @@ export default function App() {
           </nav>
           <div className="ml-auto flex items-center gap-3">
             <span
-              className="rounded-full bg-indigo-50 px-3 py-1 text-sm font-semibold tabular-nums text-indigo-700 ring-1 ring-inset ring-indigo-200"
+              className="rounded-full bg-emerald-50 px-3 py-1 text-sm font-semibold tabular-nums text-emerald-800 ring-1 ring-inset ring-emerald-200"
               title="Expected offers currently in your pipeline (Σ stage weights of active opps)"
             >
               Σ {formatExpectedOffers(expOffers)} expected offers
@@ -67,16 +61,13 @@ export default function App() {
 
       <main className="mx-auto w-full max-w-[1400px] flex-1 px-6 py-6">
         {tab === 'dashboard' && <Dashboard />}
-        {tab === 'pipeline' && <Pipeline />}
-        {tab === 'opportunities' && <Opportunities />}
-        {tab === 'contacts' && <Contacts />}
         {tab === 'settings' && <Settings />}
       </main>
 
       <footer className="flex items-center justify-center gap-2 border-t border-slate-200 py-3 text-xs text-slate-400">
         <span>JobBoard {APP_VERSION}</span>
         <span>·</span>
-        <button onClick={() => setFaqOpen(true)} className="font-medium text-indigo-500 hover:underline">FAQ</button>
+        <button onClick={() => setFaqOpen(true)} className="font-medium text-emerald-700 hover:underline">FAQ</button>
         <span>·</span>
         <span>Your data never leaves this browser — back it up in Settings</span>
       </footer>

@@ -35,7 +35,7 @@ export default function FAQModal({ onClose }: { onClose: () => void }) {
           workspace — you'll never see each other's pipelines.
         </FaqItem>
         <FaqItem q="Who made this?">
-          <a href="mailto:josh@joshpetersel.com" className="font-medium text-indigo-600 hover:underline">
+          <a href="mailto:josh@joshpetersel.com" className="font-medium text-emerald-700 hover:underline">
             josh@joshpetersel.com
           </a>
         </FaqItem>

@@ -5,6 +5,34 @@ import { formatWeight } from '../lib/format';
 import { Button, Field, Input, Modal, Select, TextArea } from './ui';
 
 export default function QuickAddOpp({ onClose, onCreated }: { onClose: () => void; onCreated?: (id: number) => void }) {
+  // Bumping the key remounts a clean form ("Save & add another").
+  const [formKey, setFormKey] = useState(0);
+  const [lastSaved, setLastSaved] = useState('');
+
+  return (
+    <Modal title="Add opportunity" onClose={onClose}>
+      <AddOppForm
+        key={formKey}
+        lastSaved={lastSaved}
+        onClose={onClose}
+        onCreated={onCreated}
+        onSavedAndAddAnother={(company) => {
+          setLastSaved(company);
+          setFormKey((k) => k + 1);
+        }}
+      />
+    </Modal>
+  );
+}
+
+function AddOppForm({
+  lastSaved, onClose, onCreated, onSavedAndAddAnother,
+}: {
+  lastSaved: string;
+  onClose: () => void;
+  onCreated?: (id: number) => void;
+  onSavedAndAddAnother: (company: string) => void;
+}) {
   const stages = useLiveQuery(() => db.stages.orderBy('order').toArray(), []) ?? [];
   const [company, setCompany] = useState('');
   const [role, setRole] = useState('');
@@ -18,12 +46,12 @@ export default function QuickAddOpp({ onClose, onCreated }: { onClose: () => voi
   const [notes, setNotes] = useState('');
   const [error, setError] = useState('');
 
-  const submit = async () => {
+  const save = async (): Promise<number | null> => {
     if (!company.trim() || !role.trim()) {
       setError('Company and role are required.');
-      return;
+      return null;
     }
-    const id = await createOpportunity({
+    return createOpportunity({
       company: company.trim(),
       role: role.trim(),
       jobUrl: jobUrl.trim() || undefined,
@@ -35,12 +63,23 @@ export default function QuickAddOpp({ onClose, onCreated }: { onClose: () => voi
       compMax: compMax ? Number(compMax) : null,
       notes: notes.trim() || undefined,
     });
+  };
+
+  const submit = async () => {
+    const id = await save();
+    if (id == null) return;
     onCreated?.(id);
     onClose();
   };
 
+  const submitAndAddAnother = async () => {
+    const id = await save();
+    if (id == null) return;
+    onSavedAndAddAnother(company.trim());
+  };
+
   return (
-    <Modal title="Add opportunity" onClose={onClose}>
+    <>
       <div className="grid grid-cols-2 gap-3">
         <Field label="Company *"><Input autoFocus value={company} onChange={(e) => setCompany(e.target.value)} /></Field>
         <Field label="Role *"><Input value={role} onChange={(e) => setRole(e.target.value)} /></Field>
@@ -64,10 +103,14 @@ export default function QuickAddOpp({ onClose, onCreated }: { onClose: () => voi
         <Field label="Notes" className="col-span-2"><TextArea rows={2} value={notes} onChange={(e) => setNotes(e.target.value)} /></Field>
       </div>
       {error && <p className="mt-2 text-sm text-red-600">{error}</p>}
-      <div className="mt-4 flex justify-end gap-2">
-        <Button onClick={onClose}>Cancel</Button>
-        <Button variant="primary" onClick={submit}>Add opportunity</Button>
+      <div className="mt-4 flex items-center gap-2">
+        {lastSaved && <span className="text-xs text-emerald-700">Saved {lastSaved} ✓</span>}
+        <div className="ml-auto flex gap-2">
+          <Button onClick={onClose}>Cancel</Button>
+          <Button onClick={submitAndAddAnother}>Save & add another</Button>
+          <Button variant="primary" onClick={submit}>Save opportunity</Button>
+        </div>
       </div>
-    </Modal>
+    </>
   );
 }
