@@ -24,15 +24,15 @@ export interface Opportunity {
   compMax?: number | null;
   stageId: string;
   priority: Priority;
-  source?: string;
-  nextAction?: string;
-  nextActionDate?: string; // YYYY-MM-DD
   notes?: string;
   lostReason?: string;
   createdAt: number;
   updatedAt: number;
   stageEnteredAt: number;
   closedAt?: number | null;
+  // When set to a future timestamp, the opp is "snoozed" from hygiene nudges
+  // (stale / old) until then — bumped a week by the "Looks good" action.
+  hygieneSnoozedUntil?: number | null;
 }
 
 export type Relationship = '1st' | '2nd' | 'alum' | 'recruiter' | 'friend' | 'other';
@@ -69,8 +69,7 @@ export interface OppContact {
  */
 export type PathStatus =
   | 'identified'
-  | 'intro-solicited'
-  | 'intro-made'
+  | 'referral-solicited'
   | 'chat-booked'
   | 'referral-made'
   | 'dead-end';
@@ -107,6 +106,9 @@ export interface Activity {
   type: ActivityType;
   date: string; // YYYY-MM-DD
   notes?: string;
+  // For stage-change activities: which stage the opp moved into. Lets the
+  // weekly tracker count opps reaching the referral / application stages.
+  stageId?: string;
   createdAt: number;
 }
 
@@ -121,7 +123,6 @@ export interface Settings {
     newOpps: number;
     referralConvos: number;
     applications: number;
-    interviews: number;
   };
   staleDays: number;
   assumedOppToOffer: number; // percent: what share of new opps eventually become offers
@@ -132,7 +133,7 @@ export interface Settings {
 
 export const ACTIVITY_LABELS: Record<ActivityType, string> = {
   'outreach': 'Outreach sent',
-  'intro-solicited': 'Intro solicited',
+  'intro-solicited': 'Referral solicited',
   'intro-made': 'Intro made',
   'chat-booked': 'Chat booked',
   'intro-call': 'Referral convo / intro call',
@@ -163,15 +164,16 @@ export const OPP_CONTACT_ROLE_LABELS: Record<OppContactRole, string> = {
 
 export const PATH_STATUS_LABELS: Record<PathStatus, string> = {
   'identified': 'Identified',
-  'intro-solicited': 'Intro solicited',
-  'intro-made': 'Intro made',
+  'referral-solicited': 'Referral solicited',
   'chat-booked': 'Chat booked',
   'referral-made': 'Referral made ✓',
   'dead-end': 'Dead end',
 };
 
-export const PATH_STATUS_ORDER: PathStatus[] = [
-  'identified', 'intro-solicited', 'intro-made', 'chat-booked', 'referral-made', 'dead-end',
+// The advanceable steps of a path, in order. "identified" is the starting
+// point (no step reached yet); "dead-end" is handled separately.
+export const PATH_PROGRESS: PathStatus[] = [
+  'identified', 'referral-solicited', 'chat-booked', 'referral-made',
 ];
 
 // ---------- Defaults ----------
@@ -191,7 +193,7 @@ export const DEFAULT_STAGES: Stage[] = [
 
 export const DEFAULT_SETTINGS: Settings = {
   id: 'app',
-  targets: { newOpps: 15, referralConvos: 5, applications: 10, interviews: 3 },
+  targets: { newOpps: 10, referralConvos: 5, applications: 5 },
   staleDays: 7,
   assumedOppToOffer: 2.5,
   schools: [],
@@ -243,6 +245,17 @@ db.version(2)
     }
   });
 
+// v0.6: referral-path timeline collapses "intro solicited" / "intro made" into
+// a single "referral solicited" step. Remap existing paths in place.
+db.version(3).upgrade(async (tx) => {
+  const paths = await tx.table('referralPaths').toArray();
+  for (const p of paths) {
+    if (p.status === 'intro-solicited' || p.status === 'intro-made') {
+      await tx.table('referralPaths').update(p.id, { status: 'referral-solicited' });
+    }
+  }
+});
+
 db.on('populate', (tx) => {
   tx.table('stages').bulkAdd(DEFAULT_STAGES);
   tx.table('settings').add(DEFAULT_SETTINGS);
@@ -279,6 +292,11 @@ export async function updateOpportunity(id: number, changes: Partial<Opportunity
 export async function moveOppToStage(oppId: number, stageId: string) {
   const [stage, opp] = await Promise.all([db.stages.get(stageId), db.opportunities.get(oppId)]);
   if (!stage || !opp || opp.stageId === stageId) return;
+  const fromStage = await db.stages.get(opp.stageId);
+  // Only a *forward* move (advancing the funnel) counts toward weekly targets;
+  // tagging stageId is what the weekly tracker keys off. Moving an opp backward
+  // still logs the change for the timeline but must not let you run up the bars.
+  const forward = !fromStage || stage.order > fromStage.order;
   const now = Date.now();
   await db.opportunities.update(oppId, {
     stageId,
@@ -291,7 +309,15 @@ export async function moveOppToStage(oppId: number, stageId: string) {
     type: 'stage-change',
     date: today(),
     notes: `Moved to ${stage.name}`,
+    stageId: forward ? stageId : undefined,
     createdAt: now,
+  });
+}
+
+/** Snooze hygiene nudges (stale / old) for this opp by a week — "Looks good". */
+export async function snoozeHygiene(oppId: number, days = 7) {
+  await db.opportunities.update(oppId, {
+    hygieneSnoozedUntil: Date.now() + days * 24 * 3600 * 1000,
   });
 }
 
@@ -387,13 +413,9 @@ export async function updateReferralPathStatus(pathId: number, status: PathStatu
   const tName = target ? `${target.firstName} ${target.lastName}`.trim() : 'target';
   const vName = via ? `${via.firstName} ${via.lastName}`.trim() : null;
   const log: Partial<Record<PathStatus, { type: ActivityType; note: string }>> = {
-    'intro-solicited': {
+    'referral-solicited': {
       type: 'intro-solicited',
-      note: vName ? `Asked ${vName} for an intro to ${tName}` : `Reached out to ${tName}`,
-    },
-    'intro-made': {
-      type: 'intro-made',
-      note: vName ? `${vName} made the intro to ${tName}` : `Connected with ${tName}`,
+      note: vName ? `Asked ${vName} for a referral to ${tName}` : `Asked ${tName} for a referral`,
     },
     'chat-booked': { type: 'chat-booked', note: `Chat booked with ${tName}` },
     'referral-made': { type: 'referral-secured', note: `Referral secured from ${tName}` },
@@ -406,7 +428,7 @@ export async function updateReferralPathStatus(pathId: number, status: PathStatu
   if (entry) {
     await logActivity({
       oppId: path.oppId,
-      contactId: status === 'intro-solicited' && via ? via.id : target?.id,
+      contactId: status === 'referral-solicited' && via ? via.id : target?.id,
       type: entry.type,
       notes: entry.note,
     });

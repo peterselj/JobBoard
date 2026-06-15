@@ -1,4 +1,5 @@
 import type { Activity, Opportunity, Stage } from '../db';
+import { daysAgo } from './format';
 
 export function stageMap(stages: Stage[]): Map<string, Stage> {
   return new Map(stages.map((s) => [s.id, s]));
@@ -33,7 +34,6 @@ export interface WeekBucket {
   newOpps: number;
   referralConvos: number;
   applications: number;
-  interviews: number;
 }
 
 export function weekStart(ts: number): number {
@@ -57,6 +57,10 @@ export function weeklyMetrics(
 ): WeekBucket[] {
   const thisWeek = weekStart(Date.now());
   const WEEK_MS = 7 * 24 * 3600 * 1000;
+  // Track distinct opps per week so a stage move *and* a hand-logged activity
+  // for the same opp in the same week count once, not twice.
+  const convoKeys: Set<string>[] = [];
+  const appKeys: Set<string>[] = [];
   const buckets: WeekBucket[] = [];
   for (let i = numWeeks - 1; i >= 0; i--) {
     const start = thisWeek - i * WEEK_MS;
@@ -66,28 +70,64 @@ export function weeklyMetrics(
       newOpps: 0,
       referralConvos: 0,
       applications: 0,
-      interviews: 0,
     });
+    convoKeys.push(new Set());
+    appKeys.push(new Set());
   }
   const firstStart = buckets[0].start;
-  const bucketFor = (ts: number): WeekBucket | undefined => {
-    if (ts < firstStart) return undefined;
+  const indexFor = (ts: number): number => {
+    if (ts < firstStart) return -1;
     const idx = Math.floor((ts - firstStart) / WEEK_MS);
-    return buckets[idx];
+    return idx < buckets.length ? idx : -1;
   };
 
   for (const opp of opps) {
-    const b = bucketFor(opp.createdAt);
-    if (b) b.newOpps++;
+    const i = indexFor(opp.createdAt);
+    if (i >= 0) buckets[i].newOpps++;
   }
   for (const a of activities) {
-    const b = bucketFor(activityTs(a));
-    if (!b) continue;
-    if (a.type === 'intro-call' || a.type === 'referral-secured') b.referralConvos++;
-    else if (a.type === 'applied') b.applications++;
-    else if (a.type === 'recruiter-screen' || a.type === 'interview') b.interviews++;
+    const i = indexFor(activityTs(a));
+    if (i < 0) continue;
+    const key = a.oppId != null ? `o${a.oppId}` : `a${a.id}`;
+    // A "referral convo" = a logged intro call / secured referral, OR an opp
+    // entering the Referral Convo stage. An "application" = a logged apply, OR
+    // an opp entering an applied stage (warm or cold).
+    const isConvo =
+      a.type === 'intro-call' ||
+      a.type === 'referral-secured' ||
+      (a.type === 'stage-change' && a.stageId === 'referral-convo');
+    const isApp =
+      a.type === 'applied' ||
+      (a.type === 'stage-change' && (a.stageId === 'applied-referral' || a.stageId === 'cold-applied'));
+    if (isConvo) convoKeys[i].add(key);
+    if (isApp) appKeys[i].add(key);
+  }
+  for (let i = 0; i < buckets.length; i++) {
+    buckets[i].referralConvos = convoKeys[i].size;
+    buckets[i].applications = appKeys[i].size;
   }
   return buckets;
+}
+
+// ---------- Hygiene ----------
+
+/** Opps left untouched this long (days in current stage / no activity) get nudged. */
+export const HYGIENE_OLD_DAYS = 40;
+
+export interface HygieneFlag {
+  stale: boolean; // no activity for staleDays+
+  old: boolean; // 40+ days in the pipeline
+  snoozed: boolean; // "looks good" pressed recently
+  snoozedUntil: number | null;
+  needsAttention: boolean; // (stale || old) && !snoozed
+}
+
+export function hygieneFor(opp: Opportunity, staleDays: number): HygieneFlag {
+  const snoozedUntil = opp.hygieneSnoozedUntil ?? null;
+  const snoozed = snoozedUntil != null && snoozedUntil > Date.now();
+  const stale = daysAgo(opp.updatedAt) >= staleDays;
+  const old = daysAgo(opp.createdAt) >= HYGIENE_OLD_DAYS;
+  return { stale, old, snoozed, snoozedUntil, needsAttention: (stale || old) && !snoozed };
 }
 
 // ---------- Pipeline shape ----------
@@ -99,18 +139,18 @@ export interface ShapeIssue {
 }
 
 /**
- * Health checks on the pipeline's *stock* (how many opps sit where). The
- * searcher directly controls New Opp, Referral Convo and Applied w/ Referral;
- * the working rule of thumb is to hold them near 3:1:1 (~15:5:5) — a
- * researched bench of ~15 targets, ~5 referral convos in flight, ~5 live
- * referral applications. Grounding: referred candidates land interviews at
- * ~40–65% vs ~2–8% for cold applies, and coaches advise ~8–12 targeted
- * applications + ~4–5 networking conversations per week off a bench of
- * 15–25 researched companies.
+ * Whether the *shape* of the working pipeline is balanced. The searcher
+ * directly controls New Opp, Referral Convo and Applied w/ Referral; the rule
+ * of thumb is to hold them near 3 : 1 : 1 — a researched bench of targets, a
+ * third of that many referral convos in flight, and roughly as many warm
+ * applications. (Raw volume is checked separately.) Grounding: referred
+ * candidates land interviews at ~40–65% vs ~2–8% for cold applies.
  *
  * Stage-specific checks key off the default stage ids and quietly skip if the
- * user deleted those stages; the volume and lopsidedness checks are generic.
+ * user deleted those stages.
  */
+export const SHAPE_TARGET_RATIO = '3 New Opps / 1 Referral / 1 Warm Apply';
+
 export function pipelineShape(opps: Opportunity[], stagesById: Map<string, Stage>): ShapeIssue[] {
   const active = opps.filter((o) => stagesById.get(o.stageId)?.kind === 'active');
   const count = (stageId: string) => active.filter((o) => o.stageId === stageId).length;
@@ -122,48 +162,41 @@ export function pipelineShape(opps: Opportunity[], stagesById: Map<string, Stage
   const applied = count('applied-referral');
   const cold = count('cold-applied');
 
-  const thinOverall = active.length < 10;
-  if (thinOverall) {
+  // Top of funnel should run ~3× the referral convos in flight.
+  if (has('new-opp') && convo > 0 && newOpp < convo * 3) {
     issues.push({
-      severity: 'red',
-      title: 'Needs more raw opportunities',
-      detail: `${active.length} active opp${active.length === 1 ? '' : 's'} in total — most searches need 20+ in motion. Add researched targets to New Opp.`,
+      severity: newOpp < convo ? 'red' : 'amber',
+      title: 'New Opp bench underweight',
+      detail: `${newOpp} in New Opp behind ${convo} referral convo${convo === 1 ? '' : 's'} — aim ~3:1 (about ${convo * 3}). Add new opps.`,
     });
-  } else {
-    // Ratio checks only make sense once there's some volume to balance.
-    if (has('new-opp') && newOpp < 12) {
-      issues.push({
-        severity: newOpp < 5 ? 'red' : 'amber',
-        title: 'Top-of-funnel bench is thin',
-        detail: `${newOpp} in New Opp — keep ~15 researched targets ready (3 for every referral convo in flight).`,
-      });
-    }
-    if (has('referral-convo') && newOpp >= 6 && convo < 3) {
+  }
+  // Convos should run ~⅓ of the bench — too few means you're not asking for intros.
+  if (has('referral-convo') && newOpp >= 6 && convo < Math.round(newOpp / 3)) {
+    issues.push({
+      severity: 'amber',
+      title: 'Too few referral convos',
+      detail: `${convo} convo${convo === 1 ? '' : 's'} off ${newOpp} in New Opp — start intros to reach ~${Math.round(newOpp / 3)} (1 per 3 targets).`,
+    });
+  }
+  // Convos should convert to warm applies at roughly 1:1.
+  if (has('applied-referral') && convo >= 3 && applied < Math.ceil(convo / 2)) {
+    issues.push({
+      severity: 'amber',
+      title: 'Convos aren’t becoming warm applies',
+      detail: `${convo} referral convos but ${applied} warm application${applied === 1 ? '' : 's'} — once the referral’s in, apply. Aim ~1:1.`,
+    });
+  }
+  // Any non-New-Opp active stage hoarding >60% of the pipeline is a clog.
+  const byStage = new Map<string, number>();
+  for (const o of active) byStage.set(o.stageId, (byStage.get(o.stageId) ?? 0) + 1);
+  for (const [sid, n] of byStage) {
+    if (sid !== 'new-opp' && active.length >= 5 && n / active.length > 0.6) {
       issues.push({
         severity: 'amber',
-        title: 'Too few referral convos',
-        detail: `${convo} convo${convo === 1 ? '' : 's'} in flight off a bench of ${newOpp} — aim for ~5. Pick targets and ask for intros.`,
+        title: 'Pipeline is lopsided',
+        detail: `${Math.round((n / active.length) * 100)}% of active opps sit in ${stagesById.get(sid)?.name ?? sid} — advance or close some.`,
       });
-    }
-    if (has('applied-referral') && convo >= 4 && applied < Math.ceil(convo / 2)) {
-      issues.push({
-        severity: 'amber',
-        title: 'Convos aren’t becoming applications',
-        detail: `${convo} referral convos but only ${applied} referral application${applied === 1 ? '' : 's'} — ask for the referral, then apply.`,
-      });
-    }
-    const byStage = new Map<string, number>();
-    for (const o of active) byStage.set(o.stageId, (byStage.get(o.stageId) ?? 0) + 1);
-    for (const [sid, n] of byStage) {
-      // A fat New Opp bench is healthy; any other stage hoarding >60% is a clog.
-      if (sid !== 'new-opp' && n / active.length > 0.6) {
-        issues.push({
-          severity: 'amber',
-          title: 'Pipeline is lopsided',
-          detail: `${Math.round((n / active.length) * 100)}% of your active opps sit in ${stagesById.get(sid)?.name ?? sid} — advance or close some.`,
-        });
-        break;
-      }
+      break;
     }
   }
   if (has('cold-applied') && cold >= 3 && cold > applied) {

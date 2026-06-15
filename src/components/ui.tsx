@@ -63,6 +63,38 @@ export function Badge({
   );
 }
 
+// ---------- Priority radio toggle ----------
+
+type PriorityValue = 'A' | 'B' | 'C';
+
+const PRIORITY_TOGGLE_LABELS: Record<PriorityValue, string> = {
+  A: 'A | dream job',
+  B: 'B | solid fit',
+  C: 'C | backup',
+};
+
+/** A single-select segmented control for opportunity priority. */
+export function PriorityToggle({ value, onChange }: { value: PriorityValue; onChange: (p: PriorityValue) => void }) {
+  return (
+    <div className="flex gap-2">
+      {(Object.keys(PRIORITY_TOGGLE_LABELS) as PriorityValue[]).map((p) => (
+        <button
+          key={p}
+          type="button"
+          onClick={() => onChange(p)}
+          className={`flex-1 rounded-md border px-3 py-1.5 text-sm font-medium transition-colors ${
+            value === p
+              ? 'border-emerald-600 bg-emerald-50 text-emerald-800 ring-1 ring-inset ring-emerald-600'
+              : 'border-slate-300 bg-white text-slate-600 hover:bg-slate-50'
+          }`}
+        >
+          {PRIORITY_TOGGLE_LABELS[p]}
+        </button>
+      ))}
+    </div>
+  );
+}
+
 // ---------- Form fields ----------
 
 export function Field({ label, children, className = '' }: { label: string; children: ReactNode; className?: string }) {

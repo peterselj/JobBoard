@@ -59,6 +59,15 @@ export async function importBackup(text: string): Promise<RestoreResult> {
         await db.oppContacts.delete(link.id!);
       }
     }
+    // Older backups used the "intro solicited / intro made" path steps —
+    // collapse them into the single "referral solicited" step.
+    const paths = await db.referralPaths.toArray();
+    for (const p of paths) {
+      const s = p.status as string;
+      if (s === 'intro-solicited' || s === 'intro-made') {
+        await db.referralPaths.update(p.id!, { status: 'referral-solicited' });
+      }
+    }
   });
   return { counts };
 }

@@ -1,9 +1,12 @@
 import { useMemo, useState } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
-import { db, saveSettings, type Opportunity } from '../db';
-import { expectedOffers, paceToOffer, pipelineShape, stageMap, weeklyMetrics, weightedComp, weekStart, type ShapeIssue, type WeekBucket } from '../lib/pipeline';
-import { daysAgo, formatExpectedOffers, formatMoney } from '../lib/format';
-import { Badge, Button, EmptyState, Input, SectionHeader, StatCard } from '../components/ui';
+import { db, moveOppToStage, snoozeHygiene, type Opportunity } from '../db';
+import {
+  expectedOffers, hygieneFor, pipelineShape, SHAPE_TARGET_RATIO, stageMap, weeklyMetrics, weekStart,
+  weightedComp, type ShapeIssue, type WeekBucket,
+} from '../lib/pipeline';
+import { daysAgo, formatDate, formatExpectedOffers, formatMoney } from '../lib/format';
+import { Badge, Button, EmptyState, SectionHeader, StatCard } from '../components/ui';
 import Kanban from '../components/Kanban';
 import OppDrawer from '../components/OppDrawer';
 import QuickAddOpp from '../components/QuickAddOpp';
@@ -17,7 +20,6 @@ export default function Dashboard() {
   const settings = useLiveQuery(() => db.settings.get('app'), []);
   const [selected, setSelected] = useState<number | null>(null);
   const [adding, setAdding] = useState(false);
-  const [weeksRemaining, setWeeksRemaining] = useState(12);
 
   const stagesById = useMemo(() => stageMap(stages), [stages]);
   const activeOpps = useMemo(
@@ -30,15 +32,17 @@ export default function Dashboard() {
   const weeks = useMemo(() => weeklyMetrics(opps, activities, 8), [opps, activities]);
   const thisWeek = weeks[weeks.length - 1];
 
-  const conversionPct = settings?.assumedOppToOffer ?? 2.5;
-  const pace = paceToOffer(expOffers, conversionPct, weeksRemaining);
-  const recentPace = weeks.slice(-5, -1).reduce((s, w) => s + w.newOpps, 0) / 4;
-
   // Needs attention
   const staleDays = settings?.staleDays ?? 7;
-  const stale = activeOpps.filter((o) => daysAgo(o.updatedAt) >= staleDays);
-  const noNextAction = activeOpps.filter((o) => !o.nextAction);
   const shapeIssues = useMemo(() => pipelineShape(opps, stagesById), [opps, stagesById]);
+  const lostStageId = useMemo(() => stages.find((s) => s.kind === 'lost')?.id, [stages]);
+  const hygiene = useMemo(
+    () =>
+      activeOpps
+        .filter((o) => hygieneFor(o, staleDays).needsAttention)
+        .sort((a, b) => a.updatedAt - b.updatedAt),
+    [activeOpps, staleDays],
+  );
 
   if (opps.length === 0 && contacts.length === 0) {
     return (
@@ -65,20 +69,14 @@ export default function Dashboard() {
       <section className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
         <SectionHeader title="Needs attention" />
         <div className="grid grid-cols-3 gap-5">
+          <VolumeCheck count={activeOpps.length} />
           <ShapeList issues={shapeIssues} />
-          <AttentionList
-            title={`Stale ${staleDays}+ days (${stale.length})`}
-            hint="No activity recently — follow up or close them out."
-            opps={stale}
-            badge={(o) => <Badge color="amber">{daysAgo(o.updatedAt)}d</Badge>}
+          <HygieneList
+            opps={hygiene}
+            staleDays={staleDays}
             onSelect={setSelected}
-          />
-          <AttentionList
-            title={`No next action (${noNextAction.length})`}
-            hint="Every active opp should have a concrete next step."
-            opps={noNextAction}
-            badge={() => <Badge color="red">set one</Badge>}
-            onSelect={setSelected}
+            onCloseOut={(id) => lostStageId && moveOppToStage(id, lostStageId)}
+            onLooksGood={(id) => snoozeHygiene(id)}
           />
         </div>
       </section>
@@ -91,7 +89,7 @@ export default function Dashboard() {
           value={formatExpectedOffers(expOffers)}
           sub={expOffers < 1 ? 'Rule of thumb: keep this ≥ 1.0 — ideally 2–3' : 'Healthy! Keep feeding the top of funnel'}
         />
-        <StatCard label="Active opportunities" value={activeOpps.length} sub={`${opps.length - activeOpps.length} closed`} />
+        <StatCard label="Active opportunities" value={activeOpps.length} />
         <StatCard label="In interviews" value={lateStage.length} sub="At recruiter screen or beyond" />
         <StatCard label="Weighted comp value" value={expComp > 0 ? formatMoney(expComp) : '—'} sub="Σ comp midpoint × stage weight" />
       </div>
@@ -102,56 +100,20 @@ export default function Dashboard() {
         <Kanban onSelect={setSelected} />
       </section>
 
-      <div className="grid grid-cols-2 gap-6">
-        {/* Funnel */}
-        <section className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
-          <SectionHeader title="Pipeline by stage" />
-          <Funnel opps={opps} stagesByIdSize={stages} onSelect={setSelected} />
-        </section>
-
-        {/* Calculator */}
-        <section className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
-          <SectionHeader title="What it takes" />
-          <div className="flex flex-wrap items-end gap-4 text-sm">
-            <label className="block">
-              <span className="mb-1 block text-xs font-medium uppercase tracking-wide text-slate-500">Offer within (weeks)</span>
-              <Input type="number" min={1} value={weeksRemaining} onChange={(e) => setWeeksRemaining(Math.max(1, Number(e.target.value) || 1))} className="!w-24" />
-            </label>
-            <label className="block">
-              <span className="mb-1 block text-xs font-medium uppercase tracking-wide text-slate-500">% of opps that close</span>
-              <Input
-                type="number" min={0.1} step={0.1} value={conversionPct}
-                onChange={(e) => saveSettings({ assumedOppToOffer: Math.max(0.1, Number(e.target.value) || 0.1) })}
-                className="!w-24"
-              />
-            </label>
-          </div>
-          <div className="mt-4 rounded-lg bg-emerald-50 p-4 text-sm text-emerald-900">
-            {pace.oppsNeededTotal === 0 ? (
-              <p>Your pipeline already carries ≥ 1 expected offer. Keep advancing what you have.</p>
-            ) : (
-              <p>
-                To carry a full expected offer you need about{' '}
-                <span className="font-bold">{pace.oppsNeededTotal} more opportunities</span> — that's{' '}
-                <span className="font-bold">{pace.oppsPerWeek < 10 ? pace.oppsPerWeek.toFixed(1) : Math.ceil(pace.oppsPerWeek)} new opps/week</span>{' '}
-                for {weeksRemaining} weeks. Your recent pace: {recentPace.toFixed(1)}/week.
-              </p>
-            )}
-          </div>
-        </section>
-      </div>
-
       {/* Weekly activity */}
       <section className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
-        <SectionHeader title="Weekly activity (last 8 weeks)" />
-        <WeeklyChart weeks={weeks} />
-        {settings && thisWeek && (
-          <div className="mt-4 grid grid-cols-4 gap-4">
-            <TargetBar label="New opps" value={thisWeek.newOpps} target={settings.targets.newOpps} color="bg-emerald-600" />
-            <TargetBar label="Referral convos" value={thisWeek.referralConvos} target={settings.targets.referralConvos} color="bg-teal-500" />
-            <TargetBar label="Applications" value={thisWeek.applications} target={settings.targets.applications} color="bg-sky-500" />
-            <TargetBar label="Interviews" value={thisWeek.interviews} target={settings.targets.interviews} color="bg-amber-500" />
-          </div>
+        <SectionHeader title="Weekly activity" />
+        {settings && (
+          <>
+            <WeeklyChart weeks={weeks} targets={settings.targets} />
+            {thisWeek && (
+              <div className="mt-4 grid grid-cols-3 gap-4">
+                <TargetBar label="New opps" value={thisWeek.newOpps} target={settings.targets.newOpps} color="bg-emerald-600" />
+                <TargetBar label="Referral convos" value={thisWeek.referralConvos} target={settings.targets.referralConvos} color="bg-teal-500" />
+                <TargetBar label="Applications" value={thisWeek.applications} target={settings.targets.applications} color="bg-sky-500" />
+              </div>
+            )}
+          </>
         )}
       </section>
 
@@ -161,73 +123,58 @@ export default function Dashboard() {
   );
 }
 
-function Funnel({ opps, stagesByIdSize: stages, onSelect }: { opps: Opportunity[]; stagesByIdSize: { id: string; name: string; weight: number; kind: string }[]; onSelect: (id: number) => void }) {
-  void onSelect;
-  const counts = useMemo(() => {
-    const m = new Map<string, number>();
-    for (const o of opps) m.set(o.stageId, (m.get(o.stageId) ?? 0) + 1);
-    return m;
-  }, [opps]);
-  // Scale bars to the busiest ACTIVE stage so a fat Closed Lost pile can't
-  // flatten the working pipeline; terminal bars just cap at full width.
-  const max = Math.max(1, ...stages.filter((s) => s.kind === 'active').map((s) => counts.get(s.id) ?? 0));
-  return (
-    <div className="space-y-1.5">
-      {stages.map((s) => {
-        const count = counts.get(s.id) ?? 0;
-        const weighted = count * (s.weight / 100);
-        return (
-          <div key={s.id} className="flex items-center gap-3 text-sm">
-            <span className="w-36 shrink-0 truncate text-slate-600">{s.name}</span>
-            <div className="h-5 flex-1 rounded bg-slate-100">
-              <div
-                className={`h-5 rounded ${s.kind === 'won' ? 'bg-emerald-700' : s.kind === 'lost' ? 'bg-slate-300' : 'bg-emerald-500'}`}
-                style={{ width: `${Math.min((count / max) * 100, 100)}%`, minWidth: count > 0 ? 8 : 0 }}
-              />
-            </div>
-            <span className="w-8 shrink-0 text-right tabular-nums text-slate-700">{count}</span>
-            <span className="w-20 shrink-0 text-right text-xs tabular-nums text-slate-400">
-              {s.kind === 'active' && count > 0 ? `+${weighted.toFixed(2)} exp` : ''}
-            </span>
-          </div>
-        );
-      })}
-    </div>
-  );
-}
+// ---------- Weekly activity ----------
 
-function WeeklyChart({ weeks }: { weeks: WeekBucket[] }) {
-  const series = [
-    { key: 'newOpps' as const, label: 'New opps', color: 'bg-emerald-600' },
-    { key: 'referralConvos' as const, label: 'Referral convos', color: 'bg-teal-500' },
-    { key: 'applications' as const, label: 'Applications', color: 'bg-sky-500' },
-    { key: 'interviews' as const, label: 'Interviews', color: 'bg-amber-500' },
-  ];
-  const max = Math.max(1, ...weeks.flatMap((w) => series.map((s) => w[s.key])));
+const WEEKLY_SERIES = [
+  { key: 'newOpps' as const, label: 'New opps', color: 'bg-emerald-600' },
+  { key: 'referralConvos' as const, label: 'Referral convos', color: 'bg-teal-500' },
+  { key: 'applications' as const, label: 'Applications', color: 'bg-sky-500' },
+];
+
+// The target sits at 80% of the plot height so on-pace bars reach the dashed
+// line and over-performance still has headroom to show above it.
+const TARGET_FRAC = 0.8;
+
+function WeeklyChart({ weeks, targets }: { weeks: WeekBucket[]; targets: { newOpps: number; referralConvos: number; applications: number } }) {
   const currentWeekStart = weekStart(Date.now());
+  const barHeight = (w: WeekBucket, key: (typeof WEEKLY_SERIES)[number]['key']) => {
+    const target = targets[key] || 1;
+    const pct = (w[key] / target) * TARGET_FRAC * 100;
+    if (w[key] === 0) return 0;
+    return Math.max(Math.min(pct, 100), 4);
+  };
   return (
     <div>
-      <div className="flex items-end gap-2">
-        {weeks.map((w) => (
-          <div key={w.start} className={`flex-1 rounded-lg p-2 ${w.start === currentWeekStart ? 'bg-emerald-50/70' : ''}`}>
-            <div className="flex h-24 items-end justify-center gap-1">
-              {series.map((s) => (
+      <div className="relative">
+        {/* Target line */}
+        <div className="pointer-events-none absolute inset-x-0 z-10 border-t border-dashed border-emerald-500/60" style={{ bottom: `${TARGET_FRAC * 100}%` }} />
+        <span className="pointer-events-none absolute left-0 z-20 -translate-y-[40%] bg-white pr-1 text-[10px] font-medium text-emerald-600" style={{ bottom: `${TARGET_FRAC * 100}%` }}>
+          target
+        </span>
+        <div className="flex h-28 items-stretch gap-2">
+          {weeks.map((w) => (
+            <div key={w.start} className={`flex flex-1 items-end justify-center gap-1 rounded-lg px-1 ${w.start === currentWeekStart ? 'bg-emerald-50/70' : ''}`}>
+              {WEEKLY_SERIES.map((s) => (
                 <div
                   key={s.key}
-                  title={`${s.label}: ${w[s.key]}`}
+                  title={`${s.label}: ${w[s.key]} / ${targets[s.key]}`}
                   className={`w-3 rounded-t ${s.color} ${w[s.key] === 0 ? 'opacity-15' : ''}`}
-                  style={{ height: `${Math.max((w[s.key] / max) * 100, 4)}%` }}
+                  style={{ height: `${barHeight(w, s.key)}%` }}
                 />
               ))}
             </div>
-            <div className="mt-1 text-center text-[11px] text-slate-400">{w.label}</div>
-          </div>
+          ))}
+        </div>
+      </div>
+      <div className="mt-1 flex gap-2">
+        {weeks.map((w) => (
+          <div key={w.start} className="flex-1 text-center text-[11px] text-slate-400">{w.label}</div>
         ))}
       </div>
       <div className="mt-2 flex justify-center gap-4 text-xs text-slate-500">
-        {series.map((s) => (
+        {WEEKLY_SERIES.map((s) => (
           <span key={s.key} className="flex items-center gap-1.5">
-            <span className={`h-2.5 w-2.5 rounded ${s.color}`} /> {s.label}
+            <span className={`h-2.5 w-2.5 rounded ${s.color}`} /> {s.label} <span className="text-slate-400">(target {targets[s.key]})</span>
           </span>
         ))}
       </div>
@@ -250,37 +197,44 @@ function TargetBar({ label, value, target, color }: { label: string; value: numb
   );
 }
 
-function AttentionList({
-  title, hint, opps, badge, onSelect,
-}: {
-  title: string;
-  hint: string;
-  opps: Opportunity[];
-  badge: (o: Opportunity) => React.ReactNode;
-  onSelect: (id: number) => void;
-}) {
+// ---------- Needs-attention columns ----------
+
+function VolumeCheck({ count }: { count: number }) {
+  let issue: { severity: 'red' | 'amber'; tag: string; detail: string } | null = null;
+  if (count < 15) {
+    issue = {
+      severity: 'red',
+      tag: 'fix now',
+      detail: `Only ${count} active opp${count === 1 ? '' : 's'} — get to at least 15. A thin pipe can't carry an offer; add new opps.`,
+    };
+  } else if (count < 20) {
+    issue = {
+      severity: 'amber',
+      tag: 'fix now',
+      detail: `${count} active opps — workable, but push toward 20–30 so the funnel has enough shots on goal.`,
+    };
+  } else if (count > 30) {
+    issue = {
+      severity: 'amber',
+      tag: 'pulse check',
+      detail: `${count} active opps — plenty in motion. If you're stretched thin, declutter the long shots so you can do each one justice.`,
+    };
+  }
   return (
     <div>
-      <h3 className="text-sm font-semibold text-slate-700">{title}</h3>
-      <p className="mt-0.5 text-xs text-slate-500">{hint}</p>
-      {/* ~5 rows visible, then the list scrolls */}
-      <ul className="mt-2 max-h-56 space-y-1.5 overflow-y-auto pr-1 thin-scroll">
-        {opps.map((o) => (
-          <li key={o.id}>
-            <button
-              onClick={() => onSelect(o.id!)}
-              className="flex w-full items-center justify-between gap-2 rounded-lg border border-slate-200 px-3 py-2 text-left text-sm hover:border-emerald-300 hover:bg-emerald-50/40"
-            >
-              <span className="min-w-0 truncate">
-                <span className="font-medium">{o.company}</span>
-                <span className="ml-1.5 text-xs text-slate-500">{o.role}</span>
-              </span>
-              {badge(o)}
-            </button>
-          </li>
-        ))}
-        {opps.length === 0 && <li className="text-xs text-slate-400">Nothing here 🎉</li>}
-      </ul>
+      <h3 className="text-sm font-semibold text-slate-700">Volume</h3>
+      <p className="mt-0.5 min-h-[2.5rem] text-xs text-slate-500">Enough opportunities in motion? Aim for ~15–30 active.</p>
+      {issue ? (
+        <div className="mt-2 rounded-lg border border-slate-200 px-3 py-2">
+          <div className="flex items-center justify-between gap-2">
+            <span className="text-2xl font-bold tabular-nums text-slate-900">{count}</span>
+            <Badge color={issue.severity}>{issue.tag}</Badge>
+          </div>
+          <p className="mt-0.5 text-xs text-slate-500">{issue.detail}</p>
+        </div>
+      ) : (
+        <p className="mt-2 text-xs text-slate-400">Enough volume 🎉</p>
+      )}
     </div>
   );
 }
@@ -288,9 +242,9 @@ function AttentionList({
 function ShapeList({ issues }: { issues: ShapeIssue[] }) {
   return (
     <div>
-      <h3 className="text-sm font-semibold text-slate-700">Pipeline shape ({issues.length})</h3>
-      <p className="mt-0.5 text-xs text-slate-500">
-        Keep New Opp : Referral Convo : Applied w/ Referral near 3:1:1 — roughly 15 : 5 : 5.
+      <h3 className="text-sm font-semibold text-slate-700">Shape</h3>
+      <p className="mt-0.5 min-h-[2.5rem] text-xs text-slate-500">
+        Target ratio: <span className="font-medium text-slate-600">{SHAPE_TARGET_RATIO}</span>.
       </p>
       <ul className="mt-2 max-h-56 space-y-1.5 overflow-y-auto pr-1 thin-scroll">
         {issues.map((issue) => (
@@ -304,7 +258,50 @@ function ShapeList({ issues }: { issues: ShapeIssue[] }) {
             <p className="mt-0.5 text-xs text-slate-500">{issue.detail}</p>
           </li>
         ))}
-        {issues.length === 0 && <li className="text-xs text-slate-400">Healthy shape 🎉</li>}
+        {issues.length === 0 && <li className="text-xs text-slate-400">Funnel looks balanced 🎉</li>}
+      </ul>
+    </div>
+  );
+}
+
+function HygieneList({
+  opps, staleDays, onSelect, onCloseOut, onLooksGood,
+}: {
+  opps: Opportunity[];
+  staleDays: number;
+  onSelect: (id: number) => void;
+  onCloseOut: (id: number) => void;
+  onLooksGood: (id: number) => void;
+}) {
+  return (
+    <div>
+      <h3 className="text-sm font-semibold text-slate-700">Hygiene</h3>
+      <p className="mt-0.5 min-h-[2.5rem] text-xs text-slate-500">
+        Stale ({staleDays}+ days quiet) or old (40+ days in pipeline). Close out or confirm they're still live.
+      </p>
+      <ul className="mt-2 max-h-56 space-y-1.5 overflow-y-auto pr-1 thin-scroll">
+        {opps.map((o) => {
+          const h = hygieneFor(o, staleDays);
+          return (
+            <li key={o.id} className="rounded-lg border border-slate-200 px-3 py-2 text-sm">
+              <div className="flex items-center justify-between gap-2">
+                <button onClick={() => onSelect(o.id!)} className="min-w-0 truncate text-left hover:text-emerald-700">
+                  <span className="font-medium">{o.company}</span>
+                  <span className="ml-1.5 text-xs text-slate-500">{o.role}</span>
+                </button>
+                <div className="flex shrink-0 gap-1">
+                  {h.old && <Badge color="red">{daysAgo(o.createdAt)}d old</Badge>}
+                  {h.stale && <Badge color="amber">{daysAgo(o.updatedAt)}d quiet</Badge>}
+                </div>
+              </div>
+              <div className="mt-1.5 flex gap-1.5">
+                <Button size="sm" variant="danger" onClick={() => onCloseOut(o.id!)}>Close out</Button>
+                <Button size="sm" onClick={() => onLooksGood(o.id!)}>Looks good</Button>
+              </div>
+            </li>
+          );
+        })}
+        {opps.length === 0 && <li className="text-xs text-slate-400">Everything's fresh 🎉</li>}
       </ul>
     </div>
   );

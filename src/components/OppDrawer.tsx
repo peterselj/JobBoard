@@ -1,16 +1,16 @@
 import { useMemo, useState } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
 import {
-  ACTIVITY_LABELS, OPP_CONTACT_ROLE_LABELS, PATH_STATUS_LABELS, PATH_STATUS_ORDER, RELATIONSHIP_LABELS,
-  addReferralPath, createContact, db, deleteOpportunity, linkContactToOpp, logActivity, moveOppToStage,
+  ACTIVITY_LABELS, PATH_PROGRESS, PATH_STATUS_LABELS, RELATIONSHIP_LABELS,
+  addReferralPath, createContact, db, deleteOpportunity, logActivity, moveOppToStage,
   today, updateOpportunity, updateReferralPathStatus,
-  type Activity, type ActivityType, type Contact, type Opportunity, type OppContactRole,
-  type PathStatus, type Priority, type Relationship,
+  type Activity, type ActivityType, type Contact, type Opportunity,
+  type PathStatus, type Relationship,
 } from '../db';
 import { findWarmPaths } from '../lib/companyMatch';
 import { alumniSearchUrl, parseProfileUrl, peopleSearchUrl } from '../lib/linkedin';
 import { formatDate, formatWeight, isoDate, relativeDays } from '../lib/format';
-import { Badge, Button, Drawer, Field, Input, Select, SectionHeader, TextArea } from './ui';
+import { Badge, Button, Drawer, Field, Input, PriorityToggle, Select, SectionHeader, TextArea } from './ui';
 import ContactDrawer from './ContactDrawer';
 
 // Manual logging keeps only the types you'd type by hand; intro-solicited /
@@ -46,7 +46,6 @@ function OppDetail({ opp, onClose }: { opp: Opportunity; onClose: () => void }) 
     [oppId],
   ) ?? [];
   const paths = useLiveQuery(() => db.referralPaths.where('oppId').equals(oppId).toArray(), [oppId]) ?? [];
-  const otherLinks = useLiveQuery(() => db.oppContacts.where('oppId').equals(oppId).toArray(), [oppId]) ?? [];
   const allContacts = useLiveQuery(() => db.contacts.toArray(), []) ?? [];
 
   const stage = stages.find((s) => s.id === opp.stageId);
@@ -54,8 +53,8 @@ function OppDetail({ opp, onClose }: { opp: Opportunity; onClose: () => void }) 
   const [viewContactId, setViewContactId] = useState<number | null>(null);
   const contactsById = useMemo(() => new Map(allContacts.map((c) => [c.id!, c])), [allContacts]);
   const usedContactIds = useMemo(
-    () => new Set([...paths.map((p) => p.targetContactId), ...otherLinks.map((l) => l.contactId)]),
-    [paths, otherLinks],
+    () => new Set(paths.map((p) => p.targetContactId)),
+    [paths],
   );
   const warmPaths = useMemo(
     () => findWarmPaths(opp.company, allContacts).filter((c) => !usedContactIds.has(c.id!)),
@@ -65,9 +64,8 @@ function OppDetail({ opp, onClose }: { opp: Opportunity; onClose: () => void }) 
   // Editable draft (explicit save for text fields; stage/priority commit instantly)
   const [draft, setDraft] = useState({
     company: opp.company, role: opp.role, jobUrl: opp.jobUrl ?? '', location: opp.location ?? '',
-    source: opp.source ?? '', compMin: opp.compMin?.toString() ?? '', compMax: opp.compMax?.toString() ?? '',
-    nextAction: opp.nextAction ?? '', nextActionDate: opp.nextActionDate ?? '', notes: opp.notes ?? '',
-    lostReason: opp.lostReason ?? '',
+    compMin: opp.compMin?.toString() ?? '', compMax: opp.compMax?.toString() ?? '',
+    notes: opp.notes ?? '', lostReason: opp.lostReason ?? '',
   });
   const [saved, setSaved] = useState(false);
   const set = (k: keyof typeof draft) => (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
@@ -80,11 +78,8 @@ function OppDetail({ opp, onClose }: { opp: Opportunity; onClose: () => void }) 
       role: draft.role.trim() || opp.role,
       jobUrl: draft.jobUrl.trim() || undefined,
       location: draft.location.trim() || undefined,
-      source: draft.source.trim() || undefined,
       compMin: draft.compMin ? Number(draft.compMin) : null,
       compMax: draft.compMax ? Number(draft.compMax) : null,
-      nextAction: draft.nextAction.trim() || undefined,
-      nextActionDate: draft.nextActionDate || undefined,
       notes: draft.notes.trim() || undefined,
       lostReason: draft.lostReason.trim() || undefined,
     });
@@ -102,9 +97,8 @@ function OppDetail({ opp, onClose }: { opp: Opportunity; onClose: () => void }) 
       ids.add(p.targetContactId);
       if (p.viaContactId) ids.add(p.viaContactId);
     }
-    for (const l of otherLinks) ids.add(l.contactId);
     return [...ids].map((id) => contactsById.get(id)).filter((c): c is Contact => !!c);
-  }, [paths, otherLinks, contactsById]);
+  }, [paths, contactsById]);
   const addActivity = async () => {
     await logActivity({
       oppId, type: actType, date: actDate, notes: actNotes.trim() || undefined,
@@ -141,17 +135,10 @@ function OppDetail({ opp, onClose }: { opp: Opportunity; onClose: () => void }) 
               <option key={s.id} value={s.id}>{s.name} ({formatWeight(s.weight)})</option>
             ))}
           </Select>
-          <Select
-            value={opp.priority}
-            onChange={(e) => updateOpportunity(oppId, { priority: e.target.value as Priority })}
-            className="!w-auto"
-            aria-label="Priority"
-          >
-            <option value="A">Priority A</option>
-            <option value="B">Priority B</option>
-            <option value="C">Priority C</option>
-          </Select>
           {stage && <Badge color="emerald">{formatWeight(stage.weight)} weight</Badge>}
+        </div>
+        <div className="mt-2">
+          <PriorityToggle value={opp.priority} onChange={(p) => updateOpportunity(oppId, { priority: p })} />
         </div>
       </div>
 
@@ -166,12 +153,9 @@ function OppDetail({ opp, onClose }: { opp: Opportunity; onClose: () => void }) 
               )}
             </div>
           </Field>
-          <Field label="Location"><Input value={draft.location} onChange={set('location')} /></Field>
-          <Field label="Source"><Input value={draft.source} onChange={set('source')} placeholder="Referral, job board…" /></Field>
+          <Field label="Location" className="col-span-2"><Input value={draft.location} onChange={set('location')} /></Field>
           <Field label="Comp min ($)"><Input type="number" value={draft.compMin} onChange={set('compMin')} /></Field>
           <Field label="Comp max ($)"><Input type="number" value={draft.compMax} onChange={set('compMax')} /></Field>
-          <Field label="Next action"><Input value={draft.nextAction} onChange={set('nextAction')} /></Field>
-          <Field label="Next action date"><Input type="date" value={draft.nextActionDate} onChange={set('nextActionDate')} /></Field>
           {stage?.kind === 'lost' && (
             <Field label="Lost reason" className="col-span-2"><Input value={draft.lostReason} onChange={set('lostReason')} /></Field>
           )}
@@ -214,46 +198,6 @@ function OppDetail({ opp, onClose }: { opp: Opportunity; onClose: () => void }) 
               Add your school(s) in Settings to get one-click alumni searches here.
             </p>
           )}
-        </section>
-
-        {/* Other contacts (recruiters, interviewers) */}
-        <section>
-          <SectionHeader title="Other contacts" />
-          {otherLinks.length === 0 && <p className="text-sm text-slate-500">Recruiters, interviewers, etc. — none linked yet.</p>}
-          <ul className="space-y-2">
-            {otherLinks.map((link) => {
-              const c = contactsById.get(link.contactId);
-              if (!c) return null;
-              return (
-                <li key={link.id} className="flex items-center justify-between gap-2 rounded-lg border border-slate-200 px-3 py-2">
-                  <div className="min-w-0 text-sm">
-                    <button onClick={() => setViewContactId(c.id!)} className="font-medium hover:text-emerald-700 hover:underline">
-                      {c.firstName} {c.lastName}
-                    </button>
-                    {c.title && <span className="ml-2 text-xs text-slate-500">{c.title}</span>}
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <Select
-                      value={link.role}
-                      onChange={(e) => db.oppContacts.update(link.id!, { role: e.target.value as OppContactRole })}
-                      className="!w-auto !py-1 !text-xs"
-                    >
-                      {Object.entries(OPP_CONTACT_ROLE_LABELS).map(([v, l]) => <option key={v} value={v}>{l}</option>)}
-                    </Select>
-                    <Button size="sm" variant="ghost" onClick={() => db.oppContacts.delete(link.id!)}>Unlink</Button>
-                  </div>
-                </li>
-              );
-            })}
-          </ul>
-          <div className="mt-2">
-            <ContactPicker
-              placeholder="Search contacts to link as recruiter/interviewer…"
-              contacts={allContacts}
-              exclude={usedContactIds}
-              onPick={(id) => linkContactToOpp(oppId, id, 'recruiter')}
-            />
-          </div>
         </section>
 
         {/* Activity */}
@@ -331,19 +275,19 @@ function ReferralPathsSection({
   onOpenContact: (id: number) => void;
 }) {
   const [bridgeId, setBridgeId] = useState<number | null>(null);
-  const [targetId, setTargetId] = useState<number | null>(null);
   const [warmSearch, setWarmSearch] = useState('');
   const [showAllWarm, setShowAllWarm] = useState(false);
 
   const bridge = bridgeId ? contactsById.get(bridgeId) : undefined;
-  const target = targetId ? contactsById.get(targetId) : undefined;
 
-  const addPath = async () => {
-    if (!targetId) return;
+  // Picking (or creating) the target referrer creates the path immediately —
+  // no extra "Add path" step — then resets the picker and any chosen bridge.
+  const pickTarget = async (targetId: number) => {
     await addReferralPath(oppId, targetId, bridgeId);
     setBridgeId(null);
-    setTargetId(null);
   };
+
+  const pathTargetIds = useMemo(() => new Set(paths.map((p) => p.targetContactId)), [paths]);
 
   const filteredWarm = useMemo(() => {
     const q = warmSearch.trim().toLowerCase();
@@ -352,94 +296,20 @@ function ReferralPathsSection({
   }, [warmPaths, warmSearch]);
   const visibleWarm = showAllWarm ? filteredWarm : filteredWarm.slice(0, 5);
 
-  const statusColor = (s: PathStatus) =>
-    s === 'referral-made' ? '!border-green-300 !bg-green-50' : s === 'dead-end' ? '!border-slate-200 !bg-slate-100 !text-slate-400' : '';
-
   return (
     <section>
       <SectionHeader title="Referral paths" />
       <p className="mb-2 text-xs text-slate-500">
-        Who gets you the referral? For 2nd-degree targets, add the 1st-degree bridge who can make the intro
-        (one row per bridge). Track each path: intro solicited → intro made → chat booked → referral made.
+        Who gets you the referral? For a 2nd-degree target, add the 1st-degree bridge who can make the intro
+        (one row per bridge). Advance each path: referral solicited → chat booked → referral made.
       </p>
 
-      {paths.length > 0 && (
-        <ul className="space-y-2">
-          {paths.map((p) => {
-            const t = contactsById.get(p.targetContactId);
-            const v = p.viaContactId ? contactsById.get(p.viaContactId) : undefined;
-            if (!t) return null;
-            return (
-              <li key={p.id} className={`flex items-center justify-between gap-2 rounded-lg border px-3 py-2 ${p.status === 'dead-end' ? 'border-slate-200 bg-slate-50 opacity-60' : 'border-slate-200'}`}>
-                <div className="min-w-0 text-sm">
-                  {v && (
-                    <span className="text-slate-600">
-                      <button onClick={() => onOpenContact(v.id!)} className="hover:text-emerald-700 hover:underline">{v.firstName} {v.lastName}</button>
-                      <span className="mx-1 text-slate-400">→</span>
-                    </span>
-                  )}
-                  <button onClick={() => onOpenContact(t.id!)} className="font-medium hover:text-emerald-700 hover:underline">
-                    {t.firstName} {t.lastName}
-                  </button>
-                  <span className="ml-2"><Badge color="sky">{RELATIONSHIP_LABELS[t.relationship]}</Badge></span>
-                </div>
-                <div className="flex shrink-0 items-center gap-1.5">
-                  <Select
-                    value={p.status}
-                    onChange={(e) => updateReferralPathStatus(p.id!, e.target.value as PathStatus)}
-                    className={`!w-auto !py-1 !text-xs ${statusColor(p.status)}`}
-                  >
-                    {PATH_STATUS_ORDER.map((s) => <option key={s} value={s}>{PATH_STATUS_LABELS[s]}</option>)}
-                  </Select>
-                  <button
-                    onClick={() => db.referralPaths.delete(p.id!)}
-                    className="rounded p-1 text-slate-300 hover:bg-slate-100 hover:text-slate-500"
-                    aria-label="Remove path"
-                  >✕</button>
-                </div>
-              </li>
-            );
-          })}
-        </ul>
-      )}
-
-      {/* Add a path */}
-      <div className="mt-3 rounded-lg border border-dashed border-slate-300 p-3">
-        <div className="grid grid-cols-[1fr_auto_1fr_auto] items-center gap-2">
-          {bridge ? (
-            <SelectedChip label={`${bridge.firstName} ${bridge.lastName}`} onClear={() => setBridgeId(null)} />
-          ) : (
-            <ContactPicker
-              placeholder="1st-degree bridge (optional)"
-              contacts={allContacts}
-              onPick={setBridgeId}
-              createMeta={{ relationship: '1st' }}
-            />
-          )}
-          <span className="text-slate-400">→</span>
-          {target ? (
-            <SelectedChip label={`${target.firstName} ${target.lastName}`} onClear={() => setTargetId(null)} />
-          ) : (
-            <ContactPicker
-              placeholder="Target referrer"
-              contacts={allContacts}
-              onPick={setTargetId}
-              createMeta={{ relationship: '2nd', company }}
-            />
-          )}
-          <Button variant="primary" size="sm" disabled={!targetId} onClick={addPath}>Add path</Button>
-        </div>
-        <p className="mt-1.5 text-[11px] text-slate-400">
-          Type a name — or paste their LinkedIn profile URL — and pick "create" if they're not in your contacts yet.
-        </p>
-      </div>
-
-      {/* Warm suggestions */}
+      {/* Contacts you already know at this company — start a path in one click. */}
       {warmPaths.length > 0 && (
-        <div className="mt-3 rounded-lg border border-green-200 bg-green-50/40 p-3">
+        <div className="mb-3 rounded-lg border border-green-200 bg-green-50/40 p-3">
           <div className="flex items-center justify-between gap-2">
             <span className="text-xs font-semibold text-green-800">
-              You know {warmPaths.length} {warmPaths.length === 1 ? 'person' : 'people'} at {company}
+              Start a path with someone at {company}
             </span>
             {warmPaths.length > 5 && (
               <Input
@@ -455,9 +325,10 @@ function ReferralPathsSection({
               <li key={c.id} className="flex items-center justify-between gap-2 rounded-md bg-white/70 px-2.5 py-1.5">
                 <div className="min-w-0 truncate text-sm">
                   <span className="font-medium">{c.firstName} {c.lastName}</span>
+                  <span className="ml-2"><Badge color="sky">{RELATIONSHIP_LABELS[c.relationship]}</Badge></span>
                   {c.title && <span className="ml-2 text-xs text-slate-500">{c.title}</span>}
                 </div>
-                <Button size="sm" onClick={() => addReferralPath(oppId, c.id!, null)}>Add as target</Button>
+                <Button size="sm" variant="primary" onClick={() => addReferralPath(oppId, c.id!, null)}>+ Add path</Button>
               </li>
             ))}
           </ul>
@@ -469,6 +340,71 @@ function ReferralPathsSection({
           {filteredWarm.length === 0 && <p className="mt-2 text-xs text-slate-500">No matches for "{warmSearch}".</p>}
         </div>
       )}
+
+      {paths.length > 0 && (
+        <ul className="space-y-2">
+          {paths.map((p) => {
+            const t = contactsById.get(p.targetContactId);
+            const v = p.viaContactId ? contactsById.get(p.viaContactId) : undefined;
+            if (!t) return null;
+            return (
+              <li key={p.id} className={`rounded-lg border px-3 py-2 ${p.status === 'dead-end' ? 'border-slate-200 bg-slate-50 opacity-70' : p.status === 'referral-made' ? 'border-green-300 bg-green-50/50' : 'border-slate-200'}`}>
+                <div className="flex items-center justify-between gap-2">
+                  <div className="min-w-0 text-sm">
+                    {v && (
+                      <span className="text-slate-600">
+                        <button onClick={() => onOpenContact(v.id!)} className="hover:text-emerald-700 hover:underline">{v.firstName} {v.lastName}</button>
+                        <span className="mx-1 text-slate-400">→</span>
+                      </span>
+                    )}
+                    <button onClick={() => onOpenContact(t.id!)} className="font-medium hover:text-emerald-700 hover:underline">
+                      {t.firstName} {t.lastName}
+                    </button>
+                    <span className="ml-2"><Badge color="sky">{RELATIONSHIP_LABELS[t.relationship]}</Badge></span>
+                  </div>
+                  <button
+                    onClick={() => db.referralPaths.delete(p.id!)}
+                    className="shrink-0 rounded p-1 text-slate-300 hover:bg-slate-100 hover:text-slate-500"
+                    aria-label="Remove path"
+                  >✕</button>
+                </div>
+                <div className="mt-2">
+                  <PathStepper status={p.status} onChange={(s) => updateReferralPathStatus(p.id!, s)} />
+                </div>
+              </li>
+            );
+          })}
+        </ul>
+      )}
+
+      {/* Add a path */}
+      <div className="mt-3 rounded-lg border border-dashed border-slate-300 p-3">
+        <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-2">
+          {bridge ? (
+            <SelectedChip label={`${bridge.firstName} ${bridge.lastName}`} onClear={() => setBridgeId(null)} />
+          ) : (
+            <ContactPicker
+              placeholder="1st-degree bridge (optional)"
+              contacts={allContacts}
+              onPick={setBridgeId}
+              createMeta={{ relationship: '1st' }}
+            />
+          )}
+          <span className="text-slate-400">→</span>
+          <ContactPicker
+            placeholder="Target referrer"
+            contacts={allContacts}
+            exclude={pathTargetIds}
+            onPick={pickTarget}
+            createMeta={{ relationship: bridgeId ? '2nd' : '1st', company }}
+          />
+        </div>
+        <p className="mt-1.5 text-[11px] text-slate-400">
+          A direct 1st-degree contact needs no bridge. Type a name — or paste a LinkedIn profile URL — and pick
+          "create" if they're not in your contacts yet.
+        </p>
+      </div>
+
       {paths.length === 0 && warmPaths.length === 0 && (
         <p className="mt-2 text-sm text-slate-500">
           No known contacts at {company} yet — find your person with the LinkedIn search links below, then paste
@@ -476,6 +412,49 @@ function ReferralPathsSection({
         </p>
       )}
     </section>
+  );
+}
+
+// A compact, one-click-per-step progress control for a referral path. Clicking
+// a step advances to it; clicking the current furthest step steps back one.
+function PathStepper({ status, onChange }: { status: PathStatus; onChange: (s: PathStatus) => void }) {
+  const dead = status === 'dead-end';
+  const currentIdx = dead ? 0 : PATH_PROGRESS.indexOf(status); // 0 = identified
+  const steps = PATH_PROGRESS.slice(1); // skip "identified"
+  return (
+    <div className="flex flex-wrap items-center gap-1.5">
+      {steps.map((s, i) => {
+        const stepNum = i + 1; // index within PATH_PROGRESS
+        const reached = !dead && currentIdx >= stepNum;
+        const isCurrent = !dead && currentIdx === stepNum;
+        return (
+          <button
+            key={s}
+            onClick={() => onChange(isCurrent ? PATH_PROGRESS[stepNum - 1] : s)}
+            className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-medium ring-1 ring-inset transition-colors ${
+              reached
+                ? 'bg-emerald-600 text-white ring-emerald-600'
+                : 'bg-white text-slate-600 ring-slate-300 hover:ring-emerald-400'
+            }`}
+            title={reached ? 'Click to step back' : `Mark ${PATH_STATUS_LABELS[s]}`}
+          >
+            <span className={`flex h-3.5 w-3.5 items-center justify-center rounded-full text-[9px] ${reached ? 'bg-white/25' : 'ring-1 ring-inset ring-slate-300'}`}>
+              {reached ? '✓' : ''}
+            </span>
+            {PATH_STATUS_LABELS[s]}
+          </button>
+        );
+      })}
+      <button
+        onClick={() => onChange(dead ? 'identified' : 'dead-end')}
+        className={`ml-auto rounded-full px-2 py-1 text-xs font-medium transition-colors ${
+          dead ? 'bg-slate-200 text-slate-600' : 'text-slate-400 hover:bg-slate-100 hover:text-slate-600'
+        }`}
+        title={dead ? 'Reopen this path' : 'Mark this path a dead end'}
+      >
+        {dead ? 'Reopen' : 'Dead end'}
+      </button>
+    </div>
   );
 }
 

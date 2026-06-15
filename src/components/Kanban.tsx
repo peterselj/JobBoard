@@ -1,11 +1,36 @@
 import { useMemo, useState } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
-import { db, moveOppToStage, type Opportunity, type Priority, type Stage } from '../db';
-import { findWarmPaths } from '../lib/companyMatch';
+import { db, moveOppToStage, type Opportunity, type Priority } from '../db';
 import { burstConfetti } from '../lib/confetti';
-import { daysAgo, formatWeight, isOverdue } from '../lib/format';
+import { hygieneFor } from '../lib/pipeline';
+import { daysAgo, formatTsDate, formatWeight } from '../lib/format';
 import { Input, Select } from './ui';
 import QuickAddOpp from './QuickAddOpp';
+
+// Column sort options. "Age" is the opportunity's overall age (createdAt).
+type SortKey = 'name-asc' | 'name-desc' | 'tier-asc' | 'tier-desc' | 'age-new' | 'age-old';
+
+const SORT_OPTIONS: { value: SortKey; label: string }[] = [
+  { value: 'tier-asc', label: 'Tier A → C' },
+  { value: 'tier-desc', label: 'Tier C → A' },
+  { value: 'name-asc', label: 'Name A → Z' },
+  { value: 'name-desc', label: 'Name Z → A' },
+  { value: 'age-new', label: 'Age: newest first' },
+  { value: 'age-old', label: 'Age: oldest first' },
+];
+
+const byName = (a: Opportunity, b: Opportunity) =>
+  a.company.localeCompare(b.company) || a.role.localeCompare(b.role);
+
+const SORT_COMPARATORS: Record<SortKey, (a: Opportunity, b: Opportunity) => number> = {
+  'name-asc': byName,
+  'name-desc': (a, b) => -byName(a, b),
+  // Tier ties break by most recently touched; keeps the old default behaviour.
+  'tier-asc': (a, b) => a.priority.localeCompare(b.priority) || b.updatedAt - a.updatedAt,
+  'tier-desc': (a, b) => b.priority.localeCompare(a.priority) || b.updatedAt - a.updatedAt,
+  'age-new': (a, b) => b.createdAt - a.createdAt,
+  'age-old': (a, b) => a.createdAt - b.createdAt,
+};
 
 /**
  * The pipeline board. Active stages share the available width (no horizontal
@@ -14,9 +39,6 @@ import QuickAddOpp from './QuickAddOpp';
 export default function Kanban({ onSelect }: { onSelect: (id: number) => void }) {
   const stages = useLiveQuery(() => db.stages.orderBy('order').toArray(), []) ?? [];
   const opps = useLiveQuery(() => db.opportunities.toArray(), []) ?? [];
-  const contacts = useLiveQuery(() => db.contacts.toArray(), []) ?? [];
-  const oppContacts = useLiveQuery(() => db.oppContacts.toArray(), []) ?? [];
-  const referralPaths = useLiveQuery(() => db.referralPaths.toArray(), []) ?? [];
   const settings = useLiveQuery(() => db.settings.get('app'), []);
   const [dragOverStage, setDragOverStage] = useState<string | null>(null);
   const [addToStage, setAddToStage] = useState<string | null>(null);
@@ -24,22 +46,10 @@ export default function Kanban({ onSelect }: { onSelect: (id: number) => void })
   // Filters
   const [search, setSearch] = useState('');
   const [locationFilter, setLocationFilter] = useState('');
-  const [priorityFilter, setPriorityFilter] = useState<'' | Priority>('');
-  const [showClosed, setShowClosed] = useState(false);
+  const [priorities, setPriorities] = useState<Record<Priority, boolean>>({ A: true, B: true, C: true });
+  const [sort, setSort] = useState<SortKey>('tier-asc');
 
   const staleDays = settings?.staleDays ?? 7;
-  const linkCounts = useMemo(() => {
-    const m = new Map<number, number>();
-    for (const l of oppContacts) m.set(l.oppId, (m.get(l.oppId) ?? 0) + 1);
-    for (const p of referralPaths) m.set(p.oppId, (m.get(p.oppId) ?? 0) + 1);
-    return m;
-  }, [oppContacts, referralPaths]);
-
-  const warmCounts = useMemo(() => {
-    const m = new Map<number, number>();
-    for (const o of opps) m.set(o.id!, findWarmPaths(o.company, contacts).length);
-    return m;
-  }, [opps, contacts]);
 
   const locations = useMemo(
     () => [...new Set(opps.map((o) => o.location?.trim()).filter((l): l is string => !!l))].sort(),
@@ -49,30 +59,24 @@ export default function Kanban({ onSelect }: { onSelect: (id: number) => void })
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
     return opps.filter((o) => {
-      if (priorityFilter && o.priority !== priorityFilter) return false;
+      if (!priorities[o.priority]) return false;
       if (locationFilter && o.location?.trim() !== locationFilter) return false;
-      if (q && !`${o.company} ${o.role} ${o.location ?? ''} ${o.source ?? ''}`.toLowerCase().includes(q)) return false;
+      if (q && !`${o.company} ${o.role} ${o.location ?? ''}`.toLowerCase().includes(q)) return false;
       return true;
     });
-  }, [opps, search, locationFilter, priorityFilter]);
+  }, [opps, search, locationFilter, priorities]);
 
   const byStage = useMemo(() => {
+    const cmp = SORT_COMPARATORS[sort];
     const m = new Map<string, Opportunity[]>();
     for (const s of stages) m.set(s.id, []);
     for (const o of filtered) m.get(o.stageId)?.push(o);
-    for (const list of m.values()) {
-      list.sort((a, b) => a.priority.localeCompare(b.priority) || b.updatedAt - a.updatedAt);
-    }
+    for (const list of m.values()) list.sort(cmp);
     return m;
-  }, [stages, filtered]);
+  }, [stages, filtered, sort]);
 
-  const closedCount = useMemo(() => {
-    const terminal = new Set(stages.filter((s) => s.kind !== 'active').map((s) => s.id));
-    return opps.filter((o) => terminal.has(o.stageId)).length;
-  }, [stages, opps]);
-
-  const visibleStages = showClosed ? stages : stages.filter((s) => s.kind === 'active');
-  const filtering = !!(search.trim() || locationFilter || priorityFilter);
+  const priorityFiltered = !(priorities.A && priorities.B && priorities.C);
+  const filtering = !!(search.trim() || locationFilter) || priorityFiltered;
 
   const handleDrop = (stageId: string) => (e: React.DragEvent) => {
     e.preventDefault();
@@ -102,32 +106,43 @@ export default function Kanban({ onSelect }: { onSelect: (id: number) => void })
             {locations.map((l) => <option key={l} value={l}>{l}</option>)}
           </Select>
         )}
-        <Select value={priorityFilter} onChange={(e) => setPriorityFilter(e.target.value as '' | Priority)} className="!w-auto !py-1">
-          <option value="">All priorities</option>
-          <option value="A">A — dream job</option>
-          <option value="B">B — solid fit</option>
-          <option value="C">C — backup</option>
-        </Select>
+        <div className="flex items-center gap-1.5">
+          {(['A', 'B', 'C'] as Priority[]).map((p) => (
+            <button
+              key={p}
+              type="button"
+              onClick={() => setPriorities((s) => ({ ...s, [p]: !s[p] }))}
+              title={`${priorities[p] ? 'Hide' : 'Show'} priority ${p}`}
+              className={`rounded-md px-2.5 py-1 text-xs font-bold ring-1 ring-inset transition-colors ${
+                priorities[p] ? PRIORITY_CHIP[p] : 'bg-white text-slate-300 ring-slate-200'
+              }`}
+            >
+              {priorities[p] ? '✓ ' : ''}{p}
+            </button>
+          ))}
+        </div>
         {filtering && (
           <span className="text-xs text-slate-500">
             {filtered.length} of {opps.length} shown
             <button
-              onClick={() => { setSearch(''); setLocationFilter(''); setPriorityFilter(''); }}
+              onClick={() => { setSearch(''); setLocationFilter(''); setPriorities({ A: true, B: true, C: true }); }}
               className="ml-2 font-medium text-emerald-700 hover:underline"
             >
               clear
             </button>
           </span>
         )}
-        <label className="ml-auto flex items-center gap-1.5 text-xs text-slate-600">
-          <input type="checkbox" checked={showClosed} onChange={(e) => setShowClosed(e.target.checked)} className="rounded" />
-          Show closed ({closedCount})
+        <label className="ml-auto flex items-center gap-1.5 text-xs text-slate-500">
+          Sort
+          <Select value={sort} onChange={(e) => setSort(e.target.value as SortKey)} className="!w-auto !py-1">
+            {SORT_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+          </Select>
         </label>
       </div>
 
       {/* Board */}
       <div className="flex gap-2">
-        {visibleStages.map((stage) => {
+        {stages.map((stage) => {
           const list = byStage.get(stage.id) ?? [];
           const weighted = list.length * (stage.weight / 100);
           return (
@@ -152,16 +167,18 @@ export default function Kanban({ onSelect }: { onSelect: (id: number) => void })
               </div>
               {/* ~5 cards visible, then the column scrolls */}
               <div className="flex-1 space-y-1.5 overflow-y-auto p-1.5 thin-scroll" style={{ minHeight: 80, maxHeight: 440 }}>
-                {list.map((opp) => (
-                  <OppCard
-                    key={opp.id}
-                    opp={opp}
-                    stage={stage}
-                    stale={stage.kind === 'active' && daysAgo(opp.updatedAt) >= staleDays}
-                    warmPathCount={(linkCounts.get(opp.id!) ?? 0) === 0 ? warmCounts.get(opp.id!) ?? 0 : 0}
-                    onClick={() => onSelect(opp.id!)}
-                  />
-                ))}
+                {list.map((opp) => {
+                  const hyg = stage.kind === 'active' ? hygieneFor(opp, staleDays) : null;
+                  return (
+                    <OppCard
+                      key={opp.id}
+                      opp={opp}
+                      stale={!!hyg && hyg.stale && !hyg.snoozed}
+                      okUntil={hyg?.snoozed ? hyg.snoozedUntil : null}
+                      onClick={() => onSelect(opp.id!)}
+                    />
+                  );
+                })}
               </div>
               <button
                 onClick={() => setAddToStage(stage.id)}
@@ -181,18 +198,17 @@ export default function Kanban({ onSelect }: { onSelect: (id: number) => void })
 }
 
 const PRIORITY_CHIP: Record<Priority, string> = {
-  A: 'bg-red-50 text-red-700 ring-red-200',
-  B: 'bg-amber-50 text-amber-800 ring-amber-200',
+  A: 'bg-emerald-200 text-emerald-900 ring-emerald-300',
+  B: 'bg-emerald-50 text-emerald-700 ring-emerald-200',
   C: 'bg-slate-100 text-slate-600 ring-slate-200',
 };
 
 function OppCard({
-  opp, stage, stale, warmPathCount, onClick,
+  opp, stale, okUntil, onClick,
 }: {
   opp: Opportunity;
-  stage: Stage;
   stale: boolean;
-  warmPathCount: number;
+  okUntil: number | null;
   onClick: () => void;
 }) {
   const days = daysAgo(opp.stageEnteredAt);
@@ -222,23 +238,12 @@ function OppCard({
             stale
           </span>
         )}
-        {warmPathCount > 0 && stage.kind === 'active' && stage.weight < 2.5 && (
-          <span
-            className="rounded bg-green-50 px-1 font-medium text-green-700 ring-1 ring-inset ring-green-200"
-            title="Contacts at this company — open the card to link a referrer"
-          >
-            {warmPathCount} warm
+        {okUntil && (
+          <span className="rounded bg-green-50 px-1 font-medium text-green-700 ring-1 ring-inset ring-green-200" title="You marked this as looking good">
+            all good until {formatTsDate(okUntil)}
           </span>
         )}
       </div>
-      {opp.nextAction && (
-        <div
-          className={`mt-1 truncate text-[11px] ${isOverdue(opp.nextActionDate) ? 'font-medium text-red-600' : 'text-slate-600'}`}
-          title={opp.nextAction}
-        >
-          → {opp.nextAction}
-        </div>
-      )}
     </div>
   );
 }

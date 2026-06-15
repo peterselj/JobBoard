@@ -29,10 +29,9 @@ export function formatDate(dateStr: string): string {
   return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
 }
 
-export function isOverdue(dateStr?: string): boolean {
-  if (!dateStr) return false;
-  const d = new Date(`${dateStr}T23:59:59`);
-  return d.getTime() < Date.now();
+/** Short local date from a millisecond timestamp, e.g. "Jun 22, 2026". */
+export function formatTsDate(ts: number): string {
+  return new Date(ts).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
 }
 
 export function formatWeight(weight: number): string {

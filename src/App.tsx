@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { db } from './db';
 import { expectedOffers, stageMap } from './lib/pipeline';
@@ -6,25 +6,65 @@ import { formatExpectedOffers } from './lib/format';
 import { APP_VERSION } from './version';
 import { Button } from './components/ui';
 import QuickAddOpp from './components/QuickAddOpp';
-import FAQModal from './components/FAQModal';
 import Dashboard from './views/Dashboard';
 import Settings from './views/Settings';
+import BestPractices from './views/BestPractices';
 
 const TABS = [
   { id: 'dashboard', label: 'Dashboard' },
   { id: 'settings', label: 'Settings' },
+  { id: 'best-practices', label: 'Best Practices' },
 ] as const;
+
+// A small lift in the footer — one is picked at random each visit.
+const FOOTER_NUDGES = [
+  'you\'re doing great',
+  'glad you\'re here',
+  'keep going',
+  'nice work today',
+  'thanks for stopping by',
+  'be kind to yourself',
+  "today's a good day to start",
+  "you're closer than you think",
+  'keep the momentum',
+  'this page believes in you',
+  'keep it simple',
+  "you're on the right track",
+  'nice to see you',
+  'enjoy the process',
+  "you're doing just fine",
+  'keep showing up',
+  'progress over perfection',
+  'something good is happening',
+  'this page is rooting for you',
+  'the right one is out there',
+].map((m) => `${m} : )`);
 
 type TabId = (typeof TABS)[number]['id'];
 
 export default function App() {
   const [tab, setTab] = useState<TabId>('dashboard');
   const [adding, setAdding] = useState(false);
-  const [faqOpen, setFaqOpen] = useState(false);
 
   const opps = useLiveQuery(() => db.opportunities.toArray(), []) ?? [];
   const stages = useLiveQuery(() => db.stages.toArray(), []) ?? [];
   const expOffers = useMemo(() => expectedOffers(opps, stageMap(stages)), [opps, stages]);
+  const nudge = useMemo(() => FOOTER_NUDGES[Math.floor(Math.random() * FOOTER_NUDGES.length)], []);
+
+  // Press "N" (for New) anywhere outside a text field to add an opportunity.
+  // Plain key — no Ctrl/Cmd — so it never collides with browser shortcuts.
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if (e.metaKey || e.ctrlKey || e.altKey) return;
+      if (e.key !== 'n' && e.key !== 'N') return;
+      const el = e.target as HTMLElement | null;
+      if (el && (el.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(el.tagName))) return;
+      e.preventDefault();
+      setAdding(true);
+    };
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+  }, []);
 
   return (
     <div className="flex min-h-screen flex-col">
@@ -54,15 +94,10 @@ export default function App() {
             >
               Σ {formatExpectedOffers(expOffers)} expected offers
             </span>
-            <Button variant="primary" onClick={() => setAdding(true)}>+ Add opp</Button>
-            <button
-              onClick={() => setFaqOpen(true)}
-              title="FAQ — how JobBoard thinks"
-              aria-label="Open FAQ"
-              className="flex h-7 w-7 items-center justify-center rounded-full border border-slate-300 text-sm font-semibold text-slate-500 transition-colors hover:border-emerald-400 hover:text-emerald-700"
-            >
-              ?
-            </button>
+            <Button variant="primary" onClick={() => setAdding(true)} title="Add an opportunity (shortcut: N)">
+              + Add opp
+              <kbd className="ml-1.5 rounded border border-emerald-300/60 bg-emerald-600/40 px-1 text-[10px] font-semibold leading-tight text-emerald-50">N</kbd>
+            </Button>
           </div>
         </div>
       </header>
@@ -70,18 +105,16 @@ export default function App() {
       <main className="mx-auto w-full max-w-[1400px] flex-1 px-6 py-6">
         {tab === 'dashboard' && <Dashboard />}
         {tab === 'settings' && <Settings />}
+        {tab === 'best-practices' && <BestPractices />}
       </main>
 
       <footer className="flex items-center justify-center gap-2 border-t border-slate-200 py-3 text-xs text-slate-400">
         <span>JobBoard {APP_VERSION}</span>
         <span>·</span>
-        <button onClick={() => setFaqOpen(true)} className="font-medium text-emerald-700 hover:underline">FAQ</button>
-        <span>·</span>
-        <span>Your data never leaves this browser — back it up in Settings</span>
+        <span>{nudge}</span>
       </footer>
 
       {adding && <QuickAddOpp onClose={() => setAdding(false)} />}
-      {faqOpen && <FAQModal onClose={() => setFaqOpen(false)} />}
     </div>
   );
 }

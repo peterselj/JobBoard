@@ -128,7 +128,6 @@ function TargetsEditor({ settings }: { settings: SettingsType }) {
         <Field label="New opps / week"><Input type="number" min={0} defaultValue={settings.targets.newOpps} onBlur={setTarget('newOpps')} /></Field>
         <Field label="Referral convos / week"><Input type="number" min={0} defaultValue={settings.targets.referralConvos} onBlur={setTarget('referralConvos')} /></Field>
         <Field label="Applications / week"><Input type="number" min={0} defaultValue={settings.targets.applications} onBlur={setTarget('applications')} /></Field>
-        <Field label="Interviews / week"><Input type="number" min={0} defaultValue={settings.targets.interviews} onBlur={setTarget('interviews')} /></Field>
         <Field label="Stale after (days)">
           <Input type="number" min={1} defaultValue={settings.staleDays} onBlur={(e) => saveSettings({ staleDays: Math.max(1, Number(e.target.value) || 7) })} />
         </Field>

@@ -25,14 +25,14 @@ export async function loadSampleData() {
   const [maya, jordan, priya, sam, alex] = contactIds;
 
   const opps: Opportunity[] = [
-    { company: 'Stripe', role: 'Product Manager, Payments', stageId: 'new-opp', priority: 'A', source: 'Job board', jobUrl: 'https://stripe.com/jobs', compMin: 180000, compMax: 220000, nextAction: 'Ask Priya for an intro call', nextActionDate: dateStr(-2), createdAt: now - 3 * DAY, updatedAt: now - 3 * DAY, stageEnteredAt: now - 3 * DAY },
-    { company: 'Vercel', role: 'Senior PM, Platform', stageId: 'cold-applied', priority: 'C', source: 'Company site', createdAt: now - 12 * DAY, updatedAt: now - 12 * DAY, stageEnteredAt: now - 11 * DAY, notes: 'Applied via portal before finding a referral path. Dana works here!' },
-    { company: 'Figma', role: 'Product Manager, Growth', stageId: 'referral-convo', priority: 'A', source: 'Alumni network', compMin: 170000, compMax: 200000, nextAction: 'Send Jordan my tailored resume', nextActionDate: dateStr(0), createdAt: now - 10 * DAY, updatedAt: now - 2 * DAY, stageEnteredAt: now - 4 * DAY },
-    { company: 'Datadog', role: 'Senior Product Manager', stageId: 'applied-referral', priority: 'B', source: 'Referral', compMin: 160000, compMax: 190000, nextAction: 'Follow up with recruiter', nextActionDate: dateStr(-1), createdAt: now - 18 * DAY, updatedAt: now - 6 * DAY, stageEnteredAt: now - 7 * DAY },
-    { company: 'Notion', role: 'Product Manager, AI', stageId: 'recruiter-screen', priority: 'A', source: 'Recruiter outreach', compMin: 175000, compMax: 210000, nextAction: 'Prep for recruiter screen Thursday', nextActionDate: dateStr(-3), createdAt: now - 21 * DAY, updatedAt: now - 5 * DAY, stageEnteredAt: now - 5 * DAY },
-    { company: 'Linear', role: 'Product Lead', stageId: 'hiring-manager', priority: 'A', source: 'Friend referral', compMin: 190000, compMax: 230000, nextAction: 'Send HM thank-you + case study', nextActionDate: dateStr(0), createdAt: now - 28 * DAY, updatedAt: now - 1 * DAY, stageEnteredAt: now - 2 * DAY },
-    { company: 'Duolingo', role: 'Senior PM, Learning', stageId: 'final-round', priority: 'B', source: 'Job board', compMin: 165000, compMax: 195000, nextAction: 'Final round panel prep', nextActionDate: dateStr(-1), createdAt: now - 35 * DAY, updatedAt: now - 1 * DAY, stageEnteredAt: now - 3 * DAY },
-    { company: 'Anthropic', role: 'Product Manager', stageId: 'lost', priority: 'B', source: 'Company site', lostReason: 'Role filled internally', createdAt: now - 45 * DAY, updatedAt: now - 14 * DAY, stageEnteredAt: now - 14 * DAY, closedAt: now - 14 * DAY },
+    { company: 'Stripe', role: 'Product Manager, Payments', stageId: 'new-opp', priority: 'A', jobUrl: 'https://stripe.com/jobs', compMin: 180000, compMax: 220000, createdAt: now - 3 * DAY, updatedAt: now - 3 * DAY, stageEnteredAt: now - 3 * DAY },
+    { company: 'Vercel', role: 'Senior PM, Platform', stageId: 'cold-applied', priority: 'C', createdAt: now - 12 * DAY, updatedAt: now - 12 * DAY, stageEnteredAt: now - 11 * DAY, notes: 'Applied via portal before finding a referral path. Dana works here!' },
+    { company: 'Figma', role: 'Product Manager, Growth', stageId: 'referral-convo', priority: 'A', compMin: 170000, compMax: 200000, createdAt: now - 10 * DAY, updatedAt: now - 2 * DAY, stageEnteredAt: now - 4 * DAY },
+    { company: 'Datadog', role: 'Senior Product Manager', stageId: 'applied-referral', priority: 'B', compMin: 160000, compMax: 190000, createdAt: now - 18 * DAY, updatedAt: now - 6 * DAY, stageEnteredAt: now - 7 * DAY },
+    { company: 'Notion', role: 'Product Manager, AI', stageId: 'recruiter-screen', priority: 'A', compMin: 175000, compMax: 210000, createdAt: now - 21 * DAY, updatedAt: now - 5 * DAY, stageEnteredAt: now - 5 * DAY },
+    { company: 'Linear', role: 'Product Lead', stageId: 'hiring-manager', priority: 'A', compMin: 190000, compMax: 230000, createdAt: now - 28 * DAY, updatedAt: now - 1 * DAY, stageEnteredAt: now - 2 * DAY },
+    { company: 'Duolingo', role: 'Senior PM, Learning', stageId: 'final-round', priority: 'B', compMin: 165000, compMax: 195000, createdAt: now - 35 * DAY, updatedAt: now - 1 * DAY, stageEnteredAt: now - 3 * DAY },
+    { company: 'Anthropic', role: 'Product Manager', stageId: 'lost', priority: 'B', lostReason: 'Role filled internally', createdAt: now - 45 * DAY, updatedAt: now - 14 * DAY, stageEnteredAt: now - 14 * DAY, closedAt: now - 14 * DAY },
   ];
   const oppIds = (await db.opportunities.bulkAdd(opps, { allKeys: true })) as number[];
   const [stripe, , figma, datadog, notion, linear, duolingo] = oppIds;
@@ -44,7 +44,7 @@ export async function loadSampleData() {
 
   const paths: ReferralPath[] = [
     // 2nd-degree chain: Maya (1st) bridges to Priya (2nd) at Stripe
-    { oppId: stripe, targetContactId: priya, viaContactId: maya, status: 'intro-solicited', createdAt: now - 2 * DAY, updatedAt: now - 1 * DAY },
+    { oppId: stripe, targetContactId: priya, viaContactId: maya, status: 'referral-solicited', createdAt: now - 2 * DAY, updatedAt: now - 1 * DAY },
     { oppId: figma, targetContactId: jordan, viaContactId: null, status: 'chat-booked', createdAt: now - 9 * DAY, updatedAt: now - 4 * DAY },
     { oppId: datadog, targetContactId: maya, viaContactId: null, status: 'referral-made', createdAt: now - 14 * DAY, updatedAt: now - 8 * DAY },
     { oppId: linear, targetContactId: alex, viaContactId: null, status: 'referral-made', createdAt: now - 17 * DAY, updatedAt: now - 16 * DAY },
