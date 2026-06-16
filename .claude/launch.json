@@ -6,6 +6,12 @@
       "runtimeExecutable": "npm",
       "runtimeArgs": ["run", "dev"],
       "port": 5173
+    },
+    {
+      "name": "jobboard-port",
+      "runtimeExecutable": "npx",
+      "runtimeArgs": ["vite", "claude-design-port", "--config", "claude-design-port/vite.config.ts", "--port", "5188"],
+      "port": 5188
     }
   ]
 }
