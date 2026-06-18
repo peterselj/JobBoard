@@ -5,11 +5,19 @@ export function stageMap(stages: Stage[]): Map<string, Stage> {
   return new Map(stages.map((s) => [s.id, s]));
 }
 
+/** Healthy number of active opportunities to keep in motion. */
+export const ACTIVE_OPP_GOAL = 15;
+
+/** Active = in an active stage and not a draft (ungroomed quick-adds don't count). */
+export function isLiveActive(opp: Opportunity, stagesById: Map<string, Stage>): boolean {
+  return !opp.draft && stagesById.get(opp.stageId)?.kind === 'active';
+}
+
 /** Expected number of offers currently in the pipeline: Σ stage-weight over active opps. */
 export function expectedOffers(opps: Opportunity[], stagesById: Map<string, Stage>): number {
   return opps.reduce((sum, opp) => {
     const stage = stagesById.get(opp.stageId);
-    if (!stage || stage.kind !== 'active') return sum;
+    if (!stage || stage.kind !== 'active' || opp.draft) return sum;
     return sum + stage.weight / 100;
   }, 0);
 }
@@ -18,7 +26,7 @@ export function expectedOffers(opps: Opportunity[], stagesById: Map<string, Stag
 export function weightedComp(opps: Opportunity[], stagesById: Map<string, Stage>): number {
   return opps.reduce((sum, opp) => {
     const stage = stagesById.get(opp.stageId);
-    if (!stage || stage.kind !== 'active') return sum;
+    if (!stage || stage.kind !== 'active' || opp.draft) return sum;
     const lo = opp.compMin ?? opp.compMax;
     const hi = opp.compMax ?? opp.compMin;
     if (lo == null || hi == null) return sum;
@@ -152,7 +160,7 @@ export interface ShapeIssue {
 export const SHAPE_TARGET_RATIO = '3 New Opps / 1 Referral / 1 Warm Apply';
 
 export function pipelineShape(opps: Opportunity[], stagesById: Map<string, Stage>): ShapeIssue[] {
-  const active = opps.filter((o) => stagesById.get(o.stageId)?.kind === 'active');
+  const active = opps.filter((o) => isLiveActive(o, stagesById));
   const count = (stageId: string) => active.filter((o) => o.stageId === stageId).length;
   const has = (id: string) => stagesById.has(id);
   const issues: ShapeIssue[] = [];

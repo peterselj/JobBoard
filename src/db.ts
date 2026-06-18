@@ -1,4 +1,5 @@
 import Dexie, { type EntityTable } from 'dexie';
+import { parseQuickAdd } from './lib/linkedin';
 
 // ---------- Types ----------
 
@@ -33,6 +34,9 @@ export interface Opportunity {
   // When set to a future timestamp, the opp is "snoozed" from hygiene nudges
   // (stale / old) until then — bumped a week by the "Looks good" action.
   hygieneSnoozedUntil?: number | null;
+  // A quick-add stub awaiting grooming. Excluded from active-opp counts and
+  // Expected Offers until fleshed out (company/role filled in).
+  draft?: boolean;
 }
 
 export type Relationship = '1st' | '2nd' | 'alum' | 'recruiter' | 'friend' | 'other';
@@ -181,15 +185,34 @@ export const PATH_PROGRESS: PathStatus[] = [
 export const DEFAULT_STAGES: Stage[] = [
   { id: 'new-opp', name: 'New Opp', weight: 0, order: 1, kind: 'active' },
   { id: 'cold-applied', name: 'Cold Applied', weight: 0.1, order: 2, kind: 'active' },
-  { id: 'referral-convo', name: 'Referral Convo', weight: 2.5, order: 3, kind: 'active' },
-  { id: 'applied-referral', name: 'Applied w/ Referral', weight: 5, order: 4, kind: 'active' },
-  { id: 'recruiter-screen', name: 'Recruiter Screen', weight: 7.5, order: 5, kind: 'active' },
-  { id: 'hiring-manager', name: 'Hiring Manager', weight: 12.5, order: 6, kind: 'active' },
-  { id: 'final-round', name: 'Final Round', weight: 33, order: 7, kind: 'active' },
-  { id: 'negotiation', name: 'Negotiation', weight: 75, order: 8, kind: 'active' },
-  { id: 'won', name: 'Closed Won', weight: 100, order: 9, kind: 'won' },
-  { id: 'lost', name: 'Closed Lost', weight: 0, order: 10, kind: 'lost' },
+  { id: 'source-connection', name: 'Source Connection', weight: 1, order: 3, kind: 'active' },
+  { id: 'referral-convo', name: 'Referral Convo', weight: 2.5, order: 4, kind: 'active' },
+  { id: 'applied-referral', name: 'Applied w/ Referral', weight: 5, order: 5, kind: 'active' },
+  { id: 'recruiter-screen', name: 'Recruiter Screen', weight: 7.5, order: 6, kind: 'active' },
+  { id: 'hiring-manager', name: 'Hiring Manager', weight: 12.5, order: 7, kind: 'active' },
+  { id: 'final-round', name: 'Final Round', weight: 33, order: 8, kind: 'active' },
+  { id: 'negotiation', name: 'Negotiation', weight: 75, order: 9, kind: 'active' },
+  { id: 'won', name: 'Closed Won', weight: 100, order: 10, kind: 'won' },
+  { id: 'lost', name: 'Closed Lost', weight: 0, order: 11, kind: 'lost' },
 ];
+
+// Inserts the Source Connection stage (v0.7) into an existing pipeline if it's
+// missing, shifting later stages down one. Shared by the live-DB migration and
+// the backup importer so existing users and restored backups both get it.
+export async function ensureSourceConnectionStage(stages: {
+  get: (id: string) => Promise<Stage | undefined>;
+  toArray: () => Promise<Stage[]>;
+  update: (id: string, changes: Partial<Stage>) => Promise<unknown>;
+  add: (row: Stage) => Promise<unknown>;
+}) {
+  if (await stages.get('source-connection')) return;
+  const cold = await stages.get('cold-applied');
+  const insertOrder = (cold?.order ?? 2) + 1;
+  for (const s of await stages.toArray()) {
+    if (s.order >= insertOrder) await stages.update(s.id, { order: s.order + 1 });
+  }
+  await stages.add({ id: 'source-connection', name: 'Source Connection', weight: 1, order: insertOrder, kind: 'active' });
+}
 
 export const DEFAULT_SETTINGS: Settings = {
   id: 'app',
@@ -256,6 +279,12 @@ db.version(3).upgrade(async (tx) => {
   }
 });
 
+// v0.7: insert the Source Connection stage ("who can intro me") between Cold
+// Applied and Referral Convo for existing pipelines.
+db.version(4).upgrade(async (tx) => {
+  await ensureSourceConnectionStage(tx.table('stages') as never);
+});
+
 db.on('populate', (tx) => {
   tx.table('stages').bulkAdd(DEFAULT_STAGES);
   tx.table('settings').add(DEFAULT_SETTINGS);
@@ -270,11 +299,13 @@ export function today(): string {
   return `${d.getFullYear()}-${m}-${day}`;
 }
 
-export async function createOpportunity(
-  data: Partial<Opportunity> & { company: string; role: string },
-): Promise<number> {
+export async function createOpportunity(data: Partial<Opportunity> = {}): Promise<number> {
   const now = Date.now();
+  // company/role default to empty — they're no longer required, so quick-add
+  // drafts (and partially-known opps) can be saved and groomed later.
   const id = await db.opportunities.add({
+    company: '',
+    role: '',
     priority: 'B',
     stageId: 'new-opp',
     ...data,
@@ -283,6 +314,23 @@ export async function createOpportunity(
     stageEnteredAt: now,
   } as Opportunity);
   return id as number;
+}
+
+/**
+ * Create a draft opp from a quick-add string (pasted URL or typed name).
+ * Lands in New Opp, flagged `draft` for grooming. Returns null for empty input.
+ */
+export async function createDraftOpp(input: string): Promise<number | null> {
+  const parsed = parseQuickAdd(input);
+  if (!parsed) return null;
+  return createOpportunity({
+    company: parsed.company ?? '',
+    role: parsed.role ?? '',
+    jobUrl: parsed.jobUrl,
+    stageId: 'new-opp',
+    priority: 'B',
+    draft: true,
+  });
 }
 
 export async function updateOpportunity(id: number, changes: Partial<Opportunity>) {

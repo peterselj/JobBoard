@@ -1,4 +1,4 @@
-import { DEFAULT_SETTINGS, DEFAULT_STAGES, db, today } from '../db';
+import { DEFAULT_SETTINGS, DEFAULT_STAGES, db, ensureSourceConnectionStage, today } from '../db';
 
 const TABLES = ['opportunities', 'contacts', 'oppContacts', 'referralPaths', 'activities', 'stages', 'settings'] as const;
 
@@ -68,6 +68,8 @@ export async function importBackup(text: string): Promise<RestoreResult> {
         await db.referralPaths.update(p.id!, { status: 'referral-solicited' });
       }
     }
+    // v0.7: backups predating the Source Connection stage get it inserted.
+    await ensureSourceConnectionStage(db.stages as never);
   });
   return { counts };
 }

@@ -46,14 +46,15 @@ function AddOppForm({
   const [error, setError] = useState('');
 
   const save = async (): Promise<number | null> => {
-    if (!company.trim() || !role.trim()) {
-      setError('Company and role are required.');
+    const c = company.trim(), r = role.trim(), u = jobUrl.trim();
+    if (!c && !r && !u) {
+      setError('Add at least a company, role, or job URL.');
       return null;
     }
     return createOpportunity({
-      company: company.trim(),
-      role: role.trim(),
-      jobUrl: jobUrl.trim() || undefined,
+      company: c,
+      role: r,
+      jobUrl: u || undefined,
       location: location.trim() || undefined,
       priority,
       stageId: stages.some((s) => s.id === stageId) ? stageId : 'new-opp',
@@ -72,14 +73,14 @@ function AddOppForm({
   const submitAndAddAnother = async () => {
     const id = await save();
     if (id == null) return;
-    onSavedAndAddAnother(company.trim());
+    onSavedAndAddAnother(company.trim() || role.trim() || 'opportunity');
   };
 
   return (
     <>
       <div className="grid grid-cols-2 gap-3">
-        <Field label="Company *"><Input autoFocus value={company} onChange={(e) => setCompany(e.target.value)} /></Field>
-        <Field label="Role *"><Input value={role} onChange={(e) => setRole(e.target.value)} /></Field>
+        <Field label="Company"><Input autoFocus value={company} onChange={(e) => setCompany(e.target.value)} /></Field>
+        <Field label="Role"><Input value={role} onChange={(e) => setRole(e.target.value)} /></Field>
         <Field label="Job URL" className="col-span-2"><Input value={jobUrl} onChange={(e) => setJobUrl(e.target.value)} placeholder="https://…" /></Field>
         <Field label="Location"><Input value={location} onChange={(e) => setLocation(e.target.value)} /></Field>
         <Field label="Stage">
