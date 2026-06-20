@@ -17,7 +17,10 @@ export type View = 'dashboard' | 'settings' | 'best-practices';
  */
 export default function App() {
   const [view, setView] = useState<View>('dashboard');
+  const [anchor, setAnchor] = useState<string | null>(null);
   const [backup, setBackup] = useState<BackupState | null>(null);
+
+  const navigate = (v: View, a?: string) => { setView(v); setAnchor(a ?? null); };
 
   useEffect(() => {
     const unsub = subscribeBackup(setBackup);
@@ -25,12 +28,22 @@ export default function App() {
     return unsub;
   }, []);
 
+  // After switching into a sub-view, scroll to the requested section.
+  useEffect(() => {
+    if (view === 'dashboard' || !anchor) return;
+    const t = setTimeout(() => {
+      document.getElementById(anchor)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      setAnchor(null);
+    }, 90);
+    return () => clearTimeout(t);
+  }, [view, anchor]);
+
   const banner = backup && (backup.restorable || backup.needsReconnect)
-    ? <BackupBanner state={backup} onOpenSettings={() => setView('settings')} />
+    ? <BackupBanner state={backup} onOpenSettings={() => navigate('settings')} />
     : null;
 
   if (view === 'dashboard') {
-    return <>{banner}<Dashboard onNavigate={setView} /></>;
+    return <>{banner}<Dashboard onNavigate={navigate} /></>;
   }
 
   const title = view === 'settings' ? 'Settings' : 'Best Practices';

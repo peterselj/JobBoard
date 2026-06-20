@@ -9,6 +9,7 @@ import {
   weeklyMetrics, weightedComp, type ShapeIssue,
 } from '../lib/pipeline';
 import { findWarmPaths } from '../lib/companyMatch';
+import { getBackupState, subscribeBackup } from '../lib/autobackup';
 import { burstConfetti } from '../lib/confetti';
 import { daysAgo, formatExpectedOffers, formatMoney, formatWeight } from '../lib/format';
 import { loadSampleData } from '../lib/sampleData';
@@ -34,7 +35,7 @@ const REP_SERIES = [
   { key: 'applications' as const, label: 'Applied', color: C.pale },
 ];
 
-type Nav = (view: 'settings' | 'best-practices') => void;
+type Nav = (view: 'settings' | 'best-practices', anchor?: string) => void;
 
 type SortKey = 'tier-asc' | 'tier-desc' | 'active-desc' | 'active-asc' | 'alpha-asc' | 'alpha-desc' | 'comp-desc';
 const compMid = (o: Opportunity): number => {
@@ -56,6 +57,8 @@ export default function Dashboard({ onNavigate }: { onNavigate: Nav }) {
   const [quickText, setQuickText] = useState('');
   const [dragOver, setDragOver] = useState<string | null>(null);
   const quickRef = useRef<HTMLInputElement>(null);
+  const [backup, setBackup] = useState(getBackupState());
+  useEffect(() => subscribeBackup(setBackup), []);
 
   // "N" anywhere outside a field opens the full add modal.
   useEffect(() => {
@@ -170,14 +173,18 @@ export default function Dashboard({ onNavigate }: { onNavigate: Nav }) {
     () => buildQueue({
       activeOpps, opps, stagesById, staleDays, contacts, linkedOppIds,
       shapeIssues: pipelineShape(opps, stagesById),
+      showAutosave: backup.supported && !backup.connected,
+      showSchools: (settings?.schools?.length ?? 0) === 0,
+      onAddOpp: () => setAdding(true),
       onReview: setSelected,
       onNudge: (id) => logActivity({ oppId: id, type: 'follow-up' }),
       onClose: (id) => lostStage && moveOppToStage(id, lostStage.id),
       onSnooze: (id) => snoozeHygiene(id),
-      onRapidAdd: () => quickRef.current?.focus(),
+      onAutosave: () => onNavigate('settings', 'settings-backup'),
+      onSchools: () => onNavigate('settings', 'settings-schools'),
       onHow: () => onNavigate('best-practices'),
     }),
-    [activeOpps, opps, stagesById, staleDays, contacts, linkedOppIds, lostStage, onNavigate],
+    [activeOpps, opps, stagesById, staleDays, contacts, linkedOppIds, lostStage, onNavigate, backup.supported, backup.connected, settings?.schools],
   );
 
   // ---- empty state ----
@@ -326,7 +333,7 @@ export default function Dashboard({ onNavigate }: { onNavigate: Nav }) {
                 <option value="active-asc">Least recently active</option>
                 <option value="alpha-asc">Alpha A → Z</option>
                 <option value="alpha-desc">Alpha Z → A</option>
-                <option value="comp-desc">Comp hi → low</option>
+                <option value="comp-desc">Comp $$$ → $</option>
               </select>
             </label>
           </div>
@@ -474,28 +481,27 @@ function RepRing({ value, target, label, color }: { value: number; target: numbe
 }
 
 function TrendRow({ weeks, seriesKey, target, label, color }: { weeks: { newOpps: number; referralConvos: number; applications: number }[]; seriesKey: 'newOpps' | 'referralConvos' | 'applications'; target: number; label: string; color: string }) {
-  let hits = 0;
+  const thisWeekVal = weeks[weeks.length - 1]?.[seriesKey] ?? 0;
   return (
     <div className="flex items-center gap-[9px]">
       <span style={{ fontSize: 9.5, color: C.muted, width: 62, flexShrink: 0 }}>{label}</span>
       <div className="flex gap-[5px]">
         {weeks.map((w, i) => {
           const v = w[seriesKey]; const t = target || 1; const pct = Math.min(v / t, 1); const deg = Math.round(pct * 360);
-          if (v >= t) hits++;
           const style: CSSProperties = v === 0
             ? { width: 13, height: 13, borderRadius: '50%', background: '#fff', border: `1.5px solid ${C.lineStrong}` }
             : { width: 13, height: 13, borderRadius: '50%', background: `conic-gradient(${color} ${deg}deg, #e9eae3 0deg)`, border: `1px solid ${C.lineStrong}` };
           return <div key={i} title={`${v}/${t}`} style={style} />;
         })}
       </div>
-      <span style={{ fontFamily: 'var(--font-mono)', fontSize: 8.5, color: C.faint, marginLeft: 4 }}>{hits}/{weeks.length} hit</span>
+      <span style={{ fontFamily: 'var(--font-mono)', fontSize: 8.5, color: C.faint, marginLeft: 4 }} title="This week vs. your weekly target">{thisWeekVal} / {target || 0}</span>
     </div>
   );
 }
 
 // ───────── action queue ─────────
 
-interface QueueBtn { label: string; primary: boolean; onClick: () => void }
+interface QueueBtn { label: React.ReactNode; primary: boolean; onClick: () => void }
 interface QueueItem { tag: string; action: string; metric: string; btns: QueueBtn[] }
 
 function buildQueue(ctx: {
@@ -506,11 +512,15 @@ function buildQueue(ctx: {
   contacts: Contact[];
   linkedOppIds: Set<number>;
   shapeIssues: ShapeIssue[];
+  showAutosave: boolean;
+  showSchools: boolean;
+  onAddOpp: () => void;
   onReview: (id: number) => void;
   onNudge: (id: number) => void;
   onClose: (id: number) => void;
   onSnooze: (id: number) => void;
-  onRapidAdd: () => void;
+  onAutosave: () => void;
+  onSchools: () => void;
   onHow: () => void;
 }): QueueItem[] {
   const { activeOpps, opps, stagesById, staleDays, contacts, linkedOppIds, shapeIssues } = ctx;
@@ -523,8 +533,16 @@ function buildQueue(ctx: {
     items.push({
       tag: 'Volume', action: `Add ${gap} opportunit${gap === 1 ? 'y' : 'ies'}`,
       metric: `${activeOpps.length} / ${ACTIVE_OPP_GOAL} active`,
-      btns: [{ label: 'Rapid add', primary: true, onClick: ctx.onRapidAdd }],
+      btns: [{ label: <>Add opp <kbd>N</kbd></>, primary: true, onClick: ctx.onAddOpp }],
     });
+  }
+
+  // First-run setup nudges
+  if (ctx.showAutosave) {
+    items.push({ tag: 'Setup', action: 'Set up autosave', metric: 'never lose your data', btns: [{ label: 'Settings ↗', primary: true, onClick: ctx.onAutosave }] });
+  }
+  if (ctx.showSchools) {
+    items.push({ tag: 'Setup', action: 'Add your alumni schools', metric: 'unlocks alumni outreach', btns: [{ label: 'Settings ↗', primary: true, onClick: ctx.onSchools }] });
   }
 
   // Drafts to groom

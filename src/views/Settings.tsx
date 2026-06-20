@@ -4,7 +4,7 @@ import { db, saveSettings, type School, type Settings as SettingsType, type Stag
 import { clearAllData, exportBackup, importBackup } from '../lib/backup';
 import {
   chooseBackupFile, disconnectBackupFile, getBackupState, reconnectBackupFile,
-  requestPersistent, restoreFromBackupFile, saveNow, subscribeBackup,
+  restoreFromBackupFile, saveNow, subscribeBackup,
 } from '../lib/autobackup';
 import { loadSampleData } from '../lib/sampleData';
 import { Button, Field, Input, SectionHeader } from '../components/ui';
@@ -171,7 +171,7 @@ function SchoolsEditor({ settings }: { settings: SettingsType }) {
   };
 
   return (
-    <section className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
+    <section id="settings-schools" className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
       <SectionHeader title="Your schools (alumni search)" />
       <p className="mb-3 text-sm text-slate-500">
         Each school you add becomes a one-click "alumni at this company" search link on every opportunity.
@@ -225,14 +225,13 @@ function BackupSection() {
   };
 
   return (
-    <section className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
+    <section id="settings-backup" className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
       <SectionHeader title="Local backup file (autosave)" />
       {!s.supported ? (
         <p className="text-sm text-slate-500">
-          Autosave-to-file needs Chrome or Edge (the File System Access API). In this browser, use Export / Import
-          below. We've also asked the browser to keep your data persistent —{' '}
-          <span className="font-medium">{s.persistent ? 'granted' : 'not granted'}</span>
-          {!s.persistent && <> (<button className="font-medium text-emerald-700 hover:underline" onClick={() => requestPersistent()}>request</button>)</>}.
+          You need Chrome or Edge as your browser to autosave to your machine. In this browser, your data is saved in
+          the browser only. You may want to switch browsers for extra reassurance, or just manually export your data
+          regularly.
         </p>
       ) : s.connected ? (
         <>
@@ -260,7 +259,7 @@ function BackupSection() {
             browser ever loses its data you can recover everything from that file — no account, no cloud.
             Persistent storage: <span className="font-medium">{s.persistent ? 'granted' : 'requested'}</span>.
           </p>
-          <Button variant="primary" onClick={choose}>Choose a backup file…</Button>
+          <Button variant="primary" onClick={choose}>Choose Backup Location &amp; Save File…</Button>
         </>
       )}
       {msg && <p className="mt-3 text-sm text-slate-600">{msg}</p>}
