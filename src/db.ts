@@ -48,6 +48,8 @@ export interface Contact {
   company?: string;
   title?: string;
   email?: string;
+  phone?: string;
+  other?: string; // freeform "how to reach / context" line
   linkedinUrl?: string;
   relationship: Relationship;
   source: 'linkedin' | 'manual';

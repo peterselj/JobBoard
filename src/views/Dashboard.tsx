@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
 import {
-  createDraftOpp, db, logActivity, moveOppToStage, snoozeHygiene,
+  createDraftOpp, db, deleteOpportunity, logActivity, moveOppToStage, snoozeHygiene,
   type Contact, type Opportunity, type Priority, type Stage,
 } from '../db';
 import {
@@ -12,7 +12,7 @@ import { findWarmPaths } from '../lib/companyMatch';
 import { burstConfetti } from '../lib/confetti';
 import { daysAgo, formatExpectedOffers, formatMoney, formatWeight } from '../lib/format';
 import { loadSampleData } from '../lib/sampleData';
-import OppDrawer from '../components/OppDrawer';
+import OpportunityPage from '../components/OpportunityPage';
 import QuickAddOpp from '../components/QuickAddOpp';
 
 // Palette (matches the approved design tokens).
@@ -359,19 +359,23 @@ export default function Dashboard({ onNavigate }: { onNavigate: Nav }) {
               </div>
               <div className="flex flex-1 flex-wrap content-center gap-[7px] overflow-hidden">
                 {lostList.slice(0, 6).map((o) => (
-                  <div key={o.id} className="flex items-center gap-[7px] rounded-[5px] border bg-white px-[9px] py-1.5" style={{ borderColor: C.line }}>
+                  <div key={o.id} draggable onDragStart={(e) => e.dataTransfer.setData('text/plain', String(o.id))} className="flex items-center gap-[7px] rounded-[5px] border bg-white px-[9px] py-1.5" style={{ borderColor: C.line, cursor: 'grab' }} title="Drag back to a stage, or × to delete">
                     <button onClick={() => setSelected(o.id!)} style={{ fontSize: 11, fontWeight: 700, background: 'none', border: 'none', cursor: 'pointer', padding: 0 }}>{o.company || 'Untitled'}</button>
                     <span style={{ fontSize: 9.5, color: C.muted }}>{o.role}</span>
+                    <button title="Delete opportunity" onClick={() => { if (window.confirm(`Delete "${o.company || o.role || 'this opportunity'}" and all its inroads & activity? This cannot be undone.`)) deleteOpportunity(o.id!); }} style={{ color: C.faint, fontSize: 12, cursor: 'pointer', background: 'none', border: 'none', lineHeight: 1, padding: '0 1px' }}>×</button>
                   </div>
                 ))}
               </div>
             </div>
             <div
+              draggable={wonList.length > 0}
+              onDragStart={(e) => wonList[0] && e.dataTransfer.setData('text/plain', String(wonList[0].id))}
               onDragOver={(e) => { e.preventDefault(); setDragOver('__won'); }}
               onDragLeave={() => setDragOver((s) => (s === '__won' ? null : s))}
               onDrop={wonStage ? onDropStage(wonStage.id, 'won') : undefined}
               className="flex w-[236px] shrink-0 items-center gap-[10px] rounded-lg px-[14px] py-2"
-              style={{ border: `2px dashed ${dragOver === '__won' ? '#cfe6d6' : '#bcd6c5'}`, background: C.forestDeep, color: '#eaf2ec' }}
+              style={{ border: `2px dashed ${dragOver === '__won' ? '#cfe6d6' : '#bcd6c5'}`, background: C.forestDeep, color: '#eaf2ec', cursor: wonList.length ? 'grab' : undefined }}
+              title={wonList.length ? 'Drag back to a stage to undo' : undefined}
             >
               <span style={{ fontSize: 16, color: '#cfe6d6' }}>✦</span>
               <div className="min-w-0">
@@ -384,7 +388,7 @@ export default function Dashboard({ onNavigate }: { onNavigate: Nav }) {
         </div>
       </div>
 
-      {selected != null && <OppDrawer oppId={selected} onClose={() => setSelected(null)} />}
+      {selected != null && <OpportunityPage oppId={selected} onClose={() => setSelected(null)} />}
       {adding && <QuickAddOpp onClose={() => setAdding(false)} />}
     </div>
   );
