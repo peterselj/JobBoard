@@ -36,6 +36,12 @@ const REP_SERIES = [
 
 type Nav = (view: 'settings' | 'best-practices') => void;
 
+type SortKey = 'tier-asc' | 'tier-desc' | 'active-desc' | 'active-asc' | 'alpha-asc' | 'alpha-desc' | 'comp-desc';
+const compMid = (o: Opportunity): number => {
+  const lo = o.compMin ?? o.compMax, hi = o.compMax ?? o.compMin;
+  return lo != null && hi != null ? (lo + hi) / 2 : -1;
+};
+
 export default function Dashboard({ onNavigate }: { onNavigate: Nav }) {
   const opps = useLiveQuery(() => db.opportunities.toArray(), []) ?? [];
   const stages = useLiveQuery(() => db.stages.orderBy('order').toArray(), []) ?? [];
@@ -82,7 +88,7 @@ export default function Dashboard({ onNavigate }: { onNavigate: Nav }) {
   const [search, setSearch] = useState('');
   const [loc, setLoc] = useState('');
   const [pri, setPri] = useState<Set<Priority>>(new Set(['A', 'B', 'C']));
-  const [sort, setSort] = useState<'tier' | 'newest' | 'closest'>('tier');
+  const [sort, setSort] = useState<SortKey>('tier-asc');
   const locations = useMemo(
     () => [...new Set(opps.map((o) => o.location?.trim()).filter((l): l is string => !!l))].sort(),
     [opps],
@@ -109,9 +115,16 @@ export default function Dashboard({ onNavigate }: { onNavigate: Nav }) {
     findWarmPaths(o.company, contacts).length === 0;
 
   const cmpSort = (a: Opportunity, b: Opportunity) => {
-    if (sort === 'newest') return b.createdAt - a.createdAt;
-    if (sort === 'closest') return (stagesById.get(b.stageId)?.weight ?? 0) - (stagesById.get(a.stageId)?.weight ?? 0);
-    return a.priority.localeCompare(b.priority) || b.updatedAt - a.updatedAt; // tier
+    switch (sort) {
+      case 'tier-desc': return b.priority.localeCompare(a.priority) || b.updatedAt - a.updatedAt;
+      case 'active-desc': return b.updatedAt - a.updatedAt;
+      case 'active-asc': return a.updatedAt - b.updatedAt;
+      case 'alpha-asc': return (a.company || '~').localeCompare(b.company || '~') || a.role.localeCompare(b.role);
+      case 'alpha-desc': return (b.company || '~').localeCompare(a.company || '~');
+      case 'comp-desc': return compMid(b) - compMid(a);
+      case 'tier-asc':
+      default: return a.priority.localeCompare(b.priority) || b.updatedAt - a.updatedAt;
+    }
   };
 
   const board = useMemo(
@@ -306,10 +319,14 @@ export default function Dashboard({ onNavigate }: { onNavigate: Nav }) {
             </div>
             <label className="ml-auto flex items-center gap-1.5 text-[11px]" style={{ color: C.muted }}>
               Sort
-              <select value={sort} onChange={(e) => setSort(e.target.value as typeof sort)} className="rounded-[5px] border bg-white px-2 py-1.5 text-[11.5px]" style={{ borderColor: C.lineStrong, color: C.inkSoft }}>
-                <option value="tier">Tier A → C</option>
-                <option value="newest">Newest</option>
-                <option value="closest">Closest to offer</option>
+              <select value={sort} onChange={(e) => setSort(e.target.value as SortKey)} className="rounded-[5px] border bg-white px-2 py-1.5 text-[11.5px]" style={{ borderColor: C.lineStrong, color: C.inkSoft }}>
+                <option value="tier-asc">Tier A → C</option>
+                <option value="tier-desc">Tier C → A</option>
+                <option value="active-desc">Most recently active</option>
+                <option value="active-asc">Least recently active</option>
+                <option value="alpha-asc">Alpha A → Z</option>
+                <option value="alpha-desc">Alpha Z → A</option>
+                <option value="comp-desc">Comp hi → low</option>
               </select>
             </label>
           </div>

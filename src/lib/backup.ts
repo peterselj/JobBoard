@@ -2,12 +2,24 @@ import { DEFAULT_SETTINGS, DEFAULT_STAGES, db, ensureSourceConnectionStage, toda
 
 const TABLES = ['opportunities', 'contacts', 'oppContacts', 'referralPaths', 'activities', 'stages', 'settings'] as const;
 
-export async function exportBackup() {
+export interface BackupPayload {
+  app: 'jobboard';
+  version: number;
+  exportedAt: string;
+  data: Record<string, unknown[]>;
+}
+
+/** Snapshot every table into a plain backup object (used by manual export + autosave). */
+export async function collectBackup(): Promise<BackupPayload> {
   const data: Record<string, unknown[]> = {};
   for (const name of TABLES) {
     data[name] = await db.table(name).toArray();
   }
-  const payload = { app: 'jobboard', version: 1, exportedAt: new Date().toISOString(), data };
+  return { app: 'jobboard', version: 1, exportedAt: new Date().toISOString(), data };
+}
+
+export async function exportBackup() {
+  const payload = await collectBackup();
   const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');

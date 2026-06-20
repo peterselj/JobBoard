@@ -1,7 +1,11 @@
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { db, saveSettings, type School, type Settings as SettingsType, type Stage } from '../db';
 import { clearAllData, exportBackup, importBackup } from '../lib/backup';
+import {
+  chooseBackupFile, disconnectBackupFile, getBackupState, reconnectBackupFile,
+  requestPersistent, restoreFromBackupFile, saveNow, subscribeBackup,
+} from '../lib/autobackup';
 import { loadSampleData } from '../lib/sampleData';
 import { Button, Field, Input, SectionHeader } from '../components/ui';
 
@@ -14,6 +18,7 @@ export default function Settings() {
       <StageEditor stages={stages} />
       {settings && <TargetsEditor settings={settings} />}
       {settings && <SchoolsEditor settings={settings} />}
+      <BackupSection />
       <DataSection />
       <SharingSection />
     </div>
@@ -195,6 +200,70 @@ function SchoolsEditor({ settings }: { settings: SettingsType }) {
         <code className="rounded bg-slate-200 px-1">schoolFilter=%5B%22<span className="font-bold">4794</span>%22%5D</code>{' '}
         — that number is the ID. (4794 is Georgetown, for example.)
       </div>
+    </section>
+  );
+}
+
+// ---------- Local backup file (autosave) ----------
+
+function BackupSection() {
+  const [s, setS] = useState(getBackupState());
+  const [msg, setMsg] = useState('');
+  useEffect(() => subscribeBackup(setS), []);
+
+  const lastSaved = s.lastSaved ? new Date(s.lastSaved).toLocaleTimeString() : '—';
+
+  const choose = async () => {
+    setMsg('');
+    try { await chooseBackupFile(); setMsg('Backup file connected — autosaving now.'); }
+    catch (e) { if ((e as { name?: string })?.name !== 'AbortError') setMsg('Could not set up the file.'); }
+  };
+  const restore = async () => {
+    if (!window.confirm('Replace ALL current data with the contents of the backup file?')) return;
+    const r = await restoreFromBackupFile();
+    if (r) setMsg(`Restored ${r.counts.opportunities} opps, ${r.counts.contacts} contacts, ${r.counts.activities} activities.`);
+  };
+
+  return (
+    <section className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
+      <SectionHeader title="Local backup file (autosave)" />
+      {!s.supported ? (
+        <p className="text-sm text-slate-500">
+          Autosave-to-file needs Chrome or Edge (the File System Access API). In this browser, use Export / Import
+          below. We've also asked the browser to keep your data persistent —{' '}
+          <span className="font-medium">{s.persistent ? 'granted' : 'not granted'}</span>
+          {!s.persistent && <> (<button className="font-medium text-emerald-700 hover:underline" onClick={() => requestPersistent()}>request</button>)</>}.
+        </p>
+      ) : s.connected ? (
+        <>
+          <p className="mb-3 text-sm text-slate-500">
+            Autosaving to <span className="font-medium text-slate-700">{s.fileName}</span> a few seconds after every
+            change — no downloads, nothing leaves your computer. {s.saving ? 'Saving…' : `Last saved ${lastSaved}.`}
+          </p>
+          <div className="flex flex-wrap gap-2">
+            <Button onClick={async () => { await saveNow(); setMsg('Saved.'); }}>Save now</Button>
+            <Button onClick={restore}>Restore from file…</Button>
+            <Button variant="danger" onClick={async () => { await disconnectBackupFile(); setMsg('Disconnected. Your data and the file are untouched.'); }}>Disconnect</Button>
+          </div>
+        </>
+      ) : s.needsReconnect ? (
+        <>
+          <p className="mb-3 text-sm text-slate-500">
+            A backup file (<span className="font-medium">{s.fileName}</span>) is set up but needs one click to reconnect this session.
+          </p>
+          <Button variant="primary" onClick={() => reconnectBackupFile()}>Reconnect autosave</Button>
+        </>
+      ) : (
+        <>
+          <p className="mb-3 text-sm text-slate-500">
+            Pick a file on your computer to autosave into. We rewrite it a few seconds after every change, so if this
+            browser ever loses its data you can recover everything from that file — no account, no cloud.
+            Persistent storage: <span className="font-medium">{s.persistent ? 'granted' : 'requested'}</span>.
+          </p>
+          <Button variant="primary" onClick={choose}>Choose a backup file…</Button>
+        </>
+      )}
+      {msg && <p className="mt-3 text-sm text-slate-600">{msg}</p>}
     </section>
   );
 }
