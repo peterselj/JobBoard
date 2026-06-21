@@ -38,6 +38,14 @@ export default function App() {
     return () => clearTimeout(t);
   }, [view, anchor]);
 
+  // Esc returns to the dashboard from a sub-view.
+  useEffect(() => {
+    if (view === 'dashboard') return;
+    const h = (e: KeyboardEvent) => { if (e.key === 'Escape') setView('dashboard'); };
+    window.addEventListener('keydown', h);
+    return () => window.removeEventListener('keydown', h);
+  }, [view]);
+
   const banner = backup && (backup.restorable || backup.needsReconnect)
     ? <BackupBanner state={backup} onOpenSettings={() => navigate('settings')} />
     : null;
@@ -55,7 +63,7 @@ export default function App() {
           onClick={() => setView('dashboard')}
           className="flex items-center gap-1.5 rounded-md border border-line-strong px-2.5 py-1 text-sm font-medium text-ink-soft transition-colors hover:bg-paper"
         >
-          ← Dashboard
+          ← Dashboard <kbd>esc</kbd>
         </button>
         <span className="text-sm font-bold tracking-tight">{title}</span>
         <span className="ml-auto font-mono text-[11px] text-faint">JobBoard {APP_VERSION}</span>

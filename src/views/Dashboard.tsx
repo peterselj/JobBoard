@@ -193,10 +193,11 @@ export default function Dashboard({ onNavigate }: { onNavigate: Nav }) {
       <div className="flex h-screen flex-col items-center justify-center gap-5 bg-paper px-6 text-center">
         <div>
           <div className="text-2xl font-extrabold tracking-tight text-ink">JobBoard 🎯</div>
-          <p className="mx-auto mt-3 max-w-md text-sm text-muted">
-            A job search is a sales pipeline: most opps won't close, so the move is to run more of them, referral-first.
-            Add one — or load sample data to look around.
-          </p>
+          <div className="mx-auto mt-3 max-w-md space-y-2.5 text-sm text-muted">
+            <p>JobBoard is a high-volume, referral-first job search CRM.</p>
+            <p>Use JobBoard if you want a tool to help organize a critical mass of leads (especially warm referrals) and you want sober metrics to track your progress.</p>
+            <p>JobBoard can't promise you a new job, but used effectively you should be able to land your new job weeks or months sooner than you would on your own. <span className="font-medium text-ink">Let's begin.</span></p>
+          </div>
         </div>
         <div className="flex gap-2">
           <button onClick={() => setAdding(true)} className="rounded-md bg-forest px-4 py-2 text-sm font-semibold text-white hover:bg-forest-deep">+ Add your first opportunity</button>
@@ -217,7 +218,7 @@ export default function Dashboard({ onNavigate }: { onNavigate: Nav }) {
       {/* ───────── HEADER ───────── */}
       <header className="flex shrink-0 items-stretch border-b bg-white" style={{ borderColor: C.lineStrong }}>
         <div className="flex w-[236px] shrink-0 items-center border-r px-[18px]" style={{ borderColor: C.line }}>
-          <span className="text-base font-extrabold tracking-tight">JobBoard</span>
+          <span className="text-base font-extrabold tracking-tight">JobBoard🎯</span>
         </div>
 
         {/* KPIs */}
