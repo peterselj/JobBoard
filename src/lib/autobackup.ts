@@ -20,6 +20,21 @@ import { collectBackup, importBackup, type BackupPayload } from './backup';
 
 export const FS_SUPPORTED = typeof window !== 'undefined' && 'showSaveFilePicker' in window;
 
+/**
+ * Brave ships Chromium but disables the File System Access API by default (it's
+ * one of the APIs they gate for privacy), so showSaveFilePicker isn't present.
+ * Detect Brave so we can show tailored guidance instead of "use Chrome/Edge".
+ */
+export async function isBraveBrowser(): Promise<boolean> {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const nav = navigator as any;
+  try {
+    return !!(nav.brave && typeof nav.brave.isBrave === 'function' && (await nav.brave.isBrave()));
+  } catch {
+    return false;
+  }
+}
+
 // Minimal shape of the bits of FileSystemFileHandle we use (some aren't in lib.dom).
 interface FileHandle {
   name: string;

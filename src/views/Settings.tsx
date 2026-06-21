@@ -3,7 +3,7 @@ import { useLiveQuery } from 'dexie-react-hooks';
 import { db, saveSettings, type School, type Settings as SettingsType, type Stage } from '../db';
 import { clearAllData, exportBackup, importBackup } from '../lib/backup';
 import {
-  chooseBackupFile, disconnectBackupFile, getBackupState, reconnectBackupFile,
+  chooseBackupFile, disconnectBackupFile, getBackupState, isBraveBrowser, reconnectBackupFile,
   restoreFromBackupFile, saveNow, subscribeBackup,
 } from '../lib/autobackup';
 import { loadSampleData } from '../lib/sampleData';
@@ -209,7 +209,9 @@ function SchoolsEditor({ settings }: { settings: SettingsType }) {
 function BackupSection() {
   const [s, setS] = useState(getBackupState());
   const [msg, setMsg] = useState('');
+  const [brave, setBrave] = useState(false);
   useEffect(() => subscribeBackup(setS), []);
+  useEffect(() => { isBraveBrowser().then(setBrave); }, []);
 
   const lastSaved = s.lastSaved ? new Date(s.lastSaved).toLocaleTimeString() : '—';
 
@@ -228,11 +230,22 @@ function BackupSection() {
     <section id="settings-backup" className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
       <SectionHeader title="Local backup file (autosave)" />
       {!s.supported ? (
-        <p className="text-sm text-slate-500">
-          You need Chrome or Edge as your browser to autosave to your machine. In this browser, your data is saved in
-          the browser only. You may want to switch browsers for extra reassurance, or just manually export your data
-          regularly.
-        </p>
+        brave ? (
+          <p className="text-sm text-slate-500">
+            You're on <span className="font-medium">Brave</span>, which turns this autosave API off by default for
+            privacy — so it's not available out of the box. To turn it on: open{' '}
+            <code className="rounded bg-slate-100 px-1 text-slate-700">brave://flags</code>, search{' '}
+            <span className="font-medium">“File System Access API”</span>, set it to <span className="font-medium">Enabled</span>,
+            relaunch Brave, then reload this page. If you don't see that flag, use Chrome or Edge instead. Either way,
+            your data is safely stored in this browser — export it manually for extra peace of mind.
+          </p>
+        ) : (
+          <p className="text-sm text-slate-500">
+            You need Chrome or Edge as your browser to autosave to your machine. In this browser, your data is saved in
+            the browser only. You may want to switch browsers for extra reassurance, or just manually export your data
+            regularly.
+          </p>
+        )
       ) : s.connected ? (
         <>
           <p className="mb-3 text-sm text-slate-500">
