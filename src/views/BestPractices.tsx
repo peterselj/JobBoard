@@ -199,16 +199,18 @@ function FaqSection() {
           12-week one, and it's why a cold portal application is weighted at just 0.1% here. The intended loop:
           identify the job → find your person there (or a bridge who can intro you) → get the referral → then apply.
         </FaqItem>
-        <FaqItem q="How do referral paths work?">
-          On any opportunity, add a path for each route to a referral. A 1st-degree contact at the company is a
-          direct target. For a 2nd-degree target, add one row per bridge: the 1st-degree friend who can make the
-          intro (e.g. Adrienne → Markus). Then advance each path's steps — referral solicited, chat booked, referral
-          made — and it's all logged to the opp's timeline automatically.
+        <FaqItem q="How do inroads work?">
+          Open any opportunity and add an inroad for each route to a referral: a 1st-degree contact at the company,
+          a 2nd-degree target reached via a connector you know (e.g. Priya → Devon), or an alum from your school.
+          Each inroad is a card you drag across the mini-board — Identified → Contacted → In conversation — and into
+          <span className="font-medium"> Referred!</span> when they put your name forward (or Dead end if it fizzles).
+          Double-click a card to edit contact details and log activity; everything lands on that contact's timeline.
         </FaqItem>
         <FaqItem q="Where does my data live? Will updates erase it?">
           Everything is stored in your own browser (IndexedDB) — nothing is ever uploaded. App updates never touch
-          your data; new versions migrate it carefully in place. Still, export a backup occasionally
-          (Settings → Export backup), especially before clearing browser data or switching machines.
+          your data; new versions migrate it carefully in place. For extra durability, set up the autosave backup
+          file (Settings → Local backup file): the app silently rewrites a JSON file on your computer after every
+          change, so even a wiped browser can be restored in one click.
         </FaqItem>
         <FaqItem q="How do I share this with a friend?">
           Send them this site's URL. Data is per-browser, so they automatically get their own private, empty

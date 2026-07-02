@@ -22,18 +22,6 @@ export function expectedOffers(opps: Opportunity[], stagesById: Map<string, Stag
   }, 0);
 }
 
-/** Probability-weighted compensation (midpoint of range) over active opps with comp data. */
-export function weightedComp(opps: Opportunity[], stagesById: Map<string, Stage>): number {
-  return opps.reduce((sum, opp) => {
-    const stage = stagesById.get(opp.stageId);
-    if (!stage || stage.kind !== 'active' || opp.draft) return sum;
-    const lo = opp.compMin ?? opp.compMax;
-    const hi = opp.compMax ?? opp.compMin;
-    if (lo == null || hi == null) return sum;
-    return sum + ((lo + hi) / 2) * (stage.weight / 100);
-  }, 0);
-}
-
 // ---------- Weekly metrics ----------
 
 export interface WeekBucket {
@@ -44,7 +32,7 @@ export interface WeekBucket {
   applications: number;
 }
 
-export function weekStart(ts: number): number {
+function weekStart(ts: number): number {
   const d = new Date(ts);
   d.setHours(0, 0, 0, 0);
   const daysSinceMonday = (d.getDay() + 6) % 7;
@@ -120,7 +108,7 @@ export function weeklyMetrics(
 // ---------- Hygiene ----------
 
 /** Opps left untouched this long (days in current stage / no activity) get nudged. */
-export const HYGIENE_OLD_DAYS = 40;
+const HYGIENE_OLD_DAYS = 40;
 
 export interface HygieneFlag {
   stale: boolean; // no activity for staleDays+
@@ -157,8 +145,6 @@ export interface ShapeIssue {
  * Stage-specific checks key off the default stage ids and quietly skip if the
  * user deleted those stages.
  */
-export const SHAPE_TARGET_RATIO = '3 New Opps / 1 Referral / 1 Warm Apply';
-
 export function pipelineShape(opps: Opportunity[], stagesById: Map<string, Stage>): ShapeIssue[] {
   const active = opps.filter((o) => isLiveActive(o, stagesById));
   const count = (stageId: string) => active.filter((o) => o.stageId === stageId).length;

@@ -4,7 +4,7 @@ import { createOpportunity, db, type Priority } from '../db';
 import { formatWeight } from '../lib/format';
 import { Button, Field, Input, Modal, PriorityToggle, Select, TextArea } from './ui';
 
-export default function QuickAddOpp({ onClose, initialStageId }: { onClose: () => void; initialStageId?: string }) {
+export default function QuickAddOpp({ onClose }: { onClose: () => void }) {
   // Bumping the key remounts a clean form ("Save & add another").
   const [formKey, setFormKey] = useState(0);
   const [lastSaved, setLastSaved] = useState('');
@@ -14,7 +14,6 @@ export default function QuickAddOpp({ onClose, initialStageId }: { onClose: () =
       <AddOppForm
         key={formKey}
         lastSaved={lastSaved}
-        initialStageId={initialStageId}
         onClose={onClose}
         onSavedAndAddAnother={(company) => {
           setLastSaved(company);
@@ -26,10 +25,9 @@ export default function QuickAddOpp({ onClose, initialStageId }: { onClose: () =
 }
 
 function AddOppForm({
-  lastSaved, initialStageId, onClose, onSavedAndAddAnother,
+  lastSaved, onClose, onSavedAndAddAnother,
 }: {
   lastSaved: string;
-  initialStageId?: string;
   onClose: () => void;
   onSavedAndAddAnother: (company: string) => void;
 }) {
@@ -39,7 +37,7 @@ function AddOppForm({
   const [jobUrl, setJobUrl] = useState('');
   const [location, setLocation] = useState('');
   const [priority, setPriority] = useState<Priority>('B');
-  const [stageId, setStageId] = useState(initialStageId ?? 'new-opp');
+  const [stageId, setStageId] = useState('new-opp');
   const [compMin, setCompMin] = useState('');
   const [compMax, setCompMax] = useState('');
   const [notes, setNotes] = useState('');

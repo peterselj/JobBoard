@@ -135,53 +135,6 @@ export interface Settings {
   schools: School[];
 }
 
-// ---------- Labels ----------
-
-export const ACTIVITY_LABELS: Record<ActivityType, string> = {
-  'outreach': 'Outreach sent',
-  'intro-solicited': 'Referral solicited',
-  'intro-made': 'Intro made',
-  'chat-booked': 'Chat booked',
-  'intro-call': 'Referral convo / intro call',
-  'referral-secured': 'Referral secured',
-  'applied': 'Applied',
-  'recruiter-screen': 'Recruiter screen',
-  'interview': 'Interview round',
-  'follow-up': 'Follow-up',
-  'offer': 'Offer received',
-  'stage-change': 'Stage change',
-  'note': 'Note',
-};
-
-export const RELATIONSHIP_LABELS: Record<Relationship, string> = {
-  '1st': '1st degree',
-  '2nd': '2nd degree',
-  'alum': 'Alum',
-  'recruiter': 'Recruiter',
-  'friend': 'Friend',
-  'other': 'Other',
-};
-
-export const OPP_CONTACT_ROLE_LABELS: Record<OppContactRole, string> = {
-  'recruiter': 'Recruiter',
-  'interviewer': 'Interviewer',
-  'other': 'Other',
-};
-
-export const PATH_STATUS_LABELS: Record<PathStatus, string> = {
-  'identified': 'Identified',
-  'referral-solicited': 'Referral solicited',
-  'chat-booked': 'Chat booked',
-  'referral-made': 'Referral made ✓',
-  'dead-end': 'Dead end',
-};
-
-// The advanceable steps of a path, in order. "identified" is the starting
-// point (no step reached yet); "dead-end" is handled separately.
-export const PATH_PROGRESS: PathStatus[] = [
-  'identified', 'referral-solicited', 'chat-booked', 'referral-made',
-];
-
 // ---------- Defaults ----------
 
 export const DEFAULT_STAGES: Stage[] = [
@@ -392,16 +345,6 @@ export async function createContact(
   return id as number;
 }
 
-export async function deleteContact(contactId: number) {
-  await db.transaction('rw', [db.contacts, db.oppContacts, db.activities, db.referralPaths], async () => {
-    await db.oppContacts.where('contactId').equals(contactId).delete();
-    await db.referralPaths.where('targetContactId').equals(contactId).delete();
-    await db.referralPaths.where('viaContactId').equals(contactId).modify({ viaContactId: null });
-    await db.activities.where('contactId').equals(contactId).modify({ contactId: null });
-    await db.contacts.delete(contactId);
-  });
-}
-
 export async function logActivity(data: {
   oppId?: number | null;
   contactId?: number | null;
@@ -420,15 +363,6 @@ export async function logActivity(data: {
   });
   if (data.oppId) await db.opportunities.update(data.oppId, { updatedAt: now });
   if (data.contactId) await db.contacts.update(data.contactId, { lastTouchedAt: now });
-}
-
-export async function linkContactToOpp(oppId: number, contactId: number, role: OppContactRole) {
-  const existing = await db.oppContacts.where('[oppId+contactId]').equals([oppId, contactId]).first();
-  if (existing) {
-    await db.oppContacts.update(existing.id!, { role });
-  } else {
-    await db.oppContacts.add({ oppId, contactId, role });
-  }
 }
 
 export async function addReferralPath(
@@ -487,7 +421,7 @@ export async function updateReferralPathStatus(pathId: number, status: PathStatu
   }
 }
 
-export async function getSettings(): Promise<Settings> {
+async function getSettings(): Promise<Settings> {
   const stored = await db.settings.get('app');
   // Merge with defaults so records written by older app versions stay valid.
   return {

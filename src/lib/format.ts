@@ -16,13 +16,6 @@ export function daysAgo(ts: number): number {
   return Math.floor((Date.now() - ts) / (24 * 3600 * 1000));
 }
 
-export function relativeDays(ts: number): string {
-  const d = daysAgo(ts);
-  if (d <= 0) return 'today';
-  if (d === 1) return 'yesterday';
-  return `${d}d ago`;
-}
-
 export function formatDate(dateStr: string): string {
   const d = new Date(`${dateStr}T12:00:00`);
   if (Number.isNaN(d.getTime())) return dateStr;

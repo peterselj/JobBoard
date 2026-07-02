@@ -35,7 +35,7 @@ export function parseProfileUrl(text: string): ParsedProfile | null {
  * must NOT guess a company name from them (greenhouse.io is not a company).
  * For these we keep the URL and leave company blank to fill at grooming.
  */
-export const JOB_BOARD_DOMAINS = new Set([
+const JOB_BOARD_DOMAINS = new Set([
   'linkedin.com', 'indeed.com', 'glassdoor.com', 'ziprecruiter.com', 'monster.com',
   'dice.com', 'simplyhired.com', 'builtin.com', 'wellfound.com', 'angel.co', 'otta.com',
   'greenhouse.io', 'lever.co', 'ashbyhq.com', 'workable.com', 'smartrecruiters.com',
@@ -75,10 +75,9 @@ export function parseQuickAdd(input: string): QuickAdd | null {
   if (m) {
     const host = m[1].toLowerCase().replace(/^www\./, '');
     const jobUrl = /^https?:\/\//i.test(text) ? text : `https://${text}`;
-    const reg = registrableDomain(host);
+    // A board if the host, its registrable domain, or any parent domain is listed.
     const isBoard =
-      JOB_BOARD_DOMAINS.has(host) ||
-      JOB_BOARD_DOMAINS.has(reg) ||
+      JOB_BOARD_DOMAINS.has(registrableDomain(host)) ||
       [...JOB_BOARD_DOMAINS].some((d) => host === d || host.endsWith('.' + d));
     return { jobUrl, company: isBoard ? undefined : companyFromHost(host) };
   }

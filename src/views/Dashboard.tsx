@@ -2,11 +2,11 @@ import { useEffect, useMemo, useRef, useState, type CSSProperties } from 'react'
 import { useLiveQuery } from 'dexie-react-hooks';
 import {
   createDraftOpp, db, deleteOpportunity, logActivity, moveOppToStage, snoozeHygiene,
-  type Contact, type Opportunity, type Priority, type Stage,
+  type Opportunity, type Priority, type Stage,
 } from '../db';
 import {
   ACTIVE_OPP_GOAL, expectedOffers, hygieneFor, isLiveActive, pipelineShape, stageMap,
-  weeklyMetrics, weightedComp, type ShapeIssue,
+  weeklyMetrics, type ShapeIssue,
 } from '../lib/pipeline';
 import { findWarmPaths } from '../lib/companyMatch';
 import { getBackupState, subscribeBackup } from '../lib/autobackup';
@@ -41,6 +41,16 @@ type SortKey = 'tier-asc' | 'tier-desc' | 'active-desc' | 'active-asc' | 'alpha-
 const compMid = (o: Opportunity): number => {
   const lo = o.compMin ?? o.compMax, hi = o.compMax ?? o.compMin;
   return lo != null && hi != null ? (lo + hi) / 2 : -1;
+};
+
+const SORTERS: Record<SortKey, (a: Opportunity, b: Opportunity) => number> = {
+  'tier-asc': (a, b) => a.priority.localeCompare(b.priority) || b.updatedAt - a.updatedAt,
+  'tier-desc': (a, b) => b.priority.localeCompare(a.priority) || b.updatedAt - a.updatedAt,
+  'active-desc': (a, b) => b.updatedAt - a.updatedAt,
+  'active-asc': (a, b) => a.updatedAt - b.updatedAt,
+  'alpha-asc': (a, b) => (a.company || '~').localeCompare(b.company || '~') || a.role.localeCompare(b.role),
+  'alpha-desc': (a, b) => (b.company || '~').localeCompare(a.company || '~'),
+  'comp-desc': (a, b) => compMid(b) - compMid(a),
 };
 
 export default function Dashboard({ onNavigate }: { onNavigate: Nav }) {
@@ -83,7 +93,6 @@ export default function Dashboard({ onNavigate }: { onNavigate: Nav }) {
 
   const activeOpps = useMemo(() => opps.filter((o) => isLiveActive(o, stagesById)), [opps, stagesById]);
   const expSum = expectedOffers(opps, stagesById);
-  const expComp = weightedComp(opps, stagesById);
   const weeks = useMemo(() => weeklyMetrics(opps, activities, 8), [opps, activities]);
   const thisWeek = weeks[weeks.length - 1] ?? { newOpps: 0, referralConvos: 0, applications: 0 };
 
@@ -107,38 +116,33 @@ export default function Dashboard({ onNavigate }: { onNavigate: Nav }) {
     });
   }, [opps, search, loc, pri]);
 
-  // Connection / hygiene context for card tags + the action queue
+  // Early-stage opps with no known way in: no linked inroad AND no warm contact
+  // at the company. Computed once and shared by the board cards and the queue.
   const linkedOppIds = useMemo(
     () => new Set<number>([...oppContacts.map((l) => l.oppId), ...referralPaths.map((p) => p.oppId)]),
     [oppContacts, referralPaths],
   );
-  const needsConn = (o: Opportunity) =>
-    (stagesById.get(o.stageId)?.weight ?? 0) < 2.5 &&
-    !o.draft && !!o.company && !linkedOppIds.has(o.id!) &&
-    findWarmPaths(o.company, contacts).length === 0;
-
-  const cmpSort = (a: Opportunity, b: Opportunity) => {
-    switch (sort) {
-      case 'tier-desc': return b.priority.localeCompare(a.priority) || b.updatedAt - a.updatedAt;
-      case 'active-desc': return b.updatedAt - a.updatedAt;
-      case 'active-asc': return a.updatedAt - b.updatedAt;
-      case 'alpha-asc': return (a.company || '~').localeCompare(b.company || '~') || a.role.localeCompare(b.role);
-      case 'alpha-desc': return (b.company || '~').localeCompare(a.company || '~');
-      case 'comp-desc': return compMid(b) - compMid(a);
-      case 'tier-asc':
-      default: return a.priority.localeCompare(b.priority) || b.updatedAt - a.updatedAt;
-    }
-  };
+  const noPathOpps = useMemo(
+    () =>
+      opps.filter(
+        (o) =>
+          (stagesById.get(o.stageId)?.weight ?? 0) < 2.5 &&
+          !o.draft && !!o.company && !linkedOppIds.has(o.id!) &&
+          findWarmPaths(o.company, contacts).length === 0,
+      ),
+    [opps, stagesById, linkedOppIds, contacts],
+  );
+  const noPathIds = useMemo(() => new Set(noPathOpps.map((o) => o.id!)), [noPathOpps]);
 
   const board = useMemo(
     () =>
       activeStages.map((s) => {
-        const list = filtered.filter((o) => o.stageId === s.id).sort(cmpSort);
+        const list = filtered.filter((o) => o.stageId === s.id).sort(SORTERS[sort]);
         const real = list.filter((o) => !o.draft).length;
         const draft = list.length - real;
         return { stage: s, list, count: draft ? `${real} +${draft}` : String(real) };
       }),
-    [activeStages, filtered, sort, stagesById],
+    [activeStages, filtered, sort],
   );
 
   const lostList = useMemo(
@@ -171,7 +175,7 @@ export default function Dashboard({ onNavigate }: { onNavigate: Nav }) {
   // ---- "Do this today" action queue ----
   const queue = useMemo(
     () => buildQueue({
-      activeOpps, opps, stagesById, staleDays, contacts, linkedOppIds,
+      activeOpps, opps, staleDays, noPathOpps,
       shapeIssues: pipelineShape(opps, stagesById),
       showAutosave: backup.supported && !backup.connected,
       showSchools: (settings?.schools?.length ?? 0) === 0,
@@ -184,7 +188,7 @@ export default function Dashboard({ onNavigate }: { onNavigate: Nav }) {
       onSchools: () => onNavigate('settings', 'settings-schools'),
       onHow: () => onNavigate('best-practices'),
     }),
-    [activeOpps, opps, stagesById, staleDays, contacts, linkedOppIds, lostStage, onNavigate, backup.supported, backup.connected, settings?.schools],
+    [activeOpps, opps, stagesById, staleDays, noPathOpps, lostStage, onNavigate, backup.supported, backup.connected, settings?.schools],
   );
 
   // ---- empty state ----
@@ -359,7 +363,7 @@ export default function Dashboard({ onNavigate }: { onNavigate: Nav }) {
                 </div>
                 <div className="thin-scroll flex flex-1 flex-col gap-[5px] overflow-y-auto p-[5px]">
                   {list.map((o) => (
-                    <OppCardView key={o.id} opp={o} stale={hygieneFor(o, staleDays).stale} needsConn={needsConn(o)} onClick={() => setSelected(o.id!)} />
+                    <OppCardView key={o.id} opp={o} stale={hygieneFor(o, staleDays).stale} needsConn={noPathIds.has(o.id!)} onClick={() => setSelected(o.id!)} />
                   ))}
                 </div>
               </div>
@@ -508,10 +512,8 @@ interface QueueItem { tag: string; action: string; metric: string; btns: QueueBt
 function buildQueue(ctx: {
   activeOpps: Opportunity[];
   opps: Opportunity[];
-  stagesById: Map<string, Stage>;
   staleDays: number;
-  contacts: Contact[];
-  linkedOppIds: Set<number>;
+  noPathOpps: Opportunity[];
   shapeIssues: ShapeIssue[];
   showAutosave: boolean;
   showSchools: boolean;
@@ -524,7 +526,7 @@ function buildQueue(ctx: {
   onSchools: () => void;
   onHow: () => void;
 }): QueueItem[] {
-  const { activeOpps, opps, stagesById, staleDays, contacts, linkedOppIds, shapeIssues } = ctx;
+  const { activeOpps, opps, staleDays, noPathOpps, shapeIssues } = ctx;
   const items: QueueItem[] = [];
   const name = (o: Opportunity) => o.company || o.role || 'an opp';
 
@@ -557,9 +559,11 @@ function buildQueue(ctx: {
   }
 
   // Hygiene: stale / old
-  const hygiene = activeOpps.filter((o) => hygieneFor(o, staleDays).needsAttention).sort((a, b) => a.updatedAt - b.updatedAt);
-  for (const o of hygiene.slice(0, 5)) {
-    const h = hygieneFor(o, staleDays);
+  const hygiene = activeOpps
+    .map((o) => ({ o, h: hygieneFor(o, staleDays) }))
+    .filter(({ h }) => h.needsAttention)
+    .sort((a, b) => a.o.updatedAt - b.o.updatedAt);
+  for (const { o, h } of hygiene.slice(0, 5)) {
     items.push({
       tag: 'Hygiene', action: `Re-engage ${name(o)}`,
       metric: h.old ? `${daysAgo(o.createdAt)}d old` : `quiet ${daysAgo(o.updatedAt)}d`,
@@ -570,12 +574,8 @@ function buildQueue(ctx: {
     });
   }
 
-  // No path on early-stage opps
-  const noPath = activeOpps.filter((o) =>
-    (stagesById.get(o.stageId)?.weight ?? 0) < 2.5 && !!o.company &&
-    !linkedOppIds.has(o.id!) && findWarmPaths(o.company, contacts).length === 0,
-  );
-  for (const o of noPath.slice(0, 3)) {
+  // No path on early-stage opps (shares the board's computation)
+  for (const o of noPathOpps.slice(0, 3)) {
     items.push({
       tag: 'Hygiene', action: `Source a connection for ${name(o)}`, metric: 'no path',
       btns: [

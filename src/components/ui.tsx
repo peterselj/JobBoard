@@ -37,32 +37,6 @@ export function Button({
   );
 }
 
-// ---------- Badge ----------
-
-export function Badge({
-  color = 'slate',
-  children,
-  title,
-}: {
-  color?: 'slate' | 'emerald' | 'green' | 'amber' | 'red' | 'sky';
-  children: ReactNode;
-  title?: string;
-}) {
-  const colors: Record<string, string> = {
-    slate: 'bg-slate-100 text-slate-700 ring-slate-200',
-    emerald: 'bg-emerald-50 text-emerald-700 ring-emerald-200',
-    green: 'bg-green-50 text-green-700 ring-green-200',
-    amber: 'bg-amber-50 text-amber-800 ring-amber-200',
-    red: 'bg-red-50 text-red-700 ring-red-200',
-    sky: 'bg-sky-50 text-sky-700 ring-sky-200',
-  };
-  return (
-    <span title={title} className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium ring-1 ring-inset ${colors[color]}`}>
-      {children}
-    </span>
-  );
-}
-
 // ---------- Priority radio toggle ----------
 
 type PriorityValue = 'A' | 'B' | 'C';
@@ -138,37 +112,7 @@ export function Modal({ title, onClose, children, wide = false }: { title: strin
   );
 }
 
-export function Drawer({ onClose, children }: { onClose: () => void; children: ReactNode }) {
-  useEscapeKey(onClose);
-  return (
-    <div className="fixed inset-0 z-50 bg-slate-900/30" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
-      <div className="absolute inset-y-0 right-0 w-[560px] max-w-full overflow-y-auto bg-white shadow-2xl">
-        {children}
-      </div>
-    </div>
-  );
-}
-
 // ---------- Misc ----------
-
-export function StatCard({ label, value, sub, accent = false }: { label: string; value: ReactNode; sub?: ReactNode; accent?: boolean }) {
-  return (
-    <div className={`rounded-xl border p-4 shadow-sm ${accent ? 'border-emerald-200 bg-emerald-50/60' : 'border-slate-200 bg-white'}`}>
-      <div className="text-xs font-medium uppercase tracking-wide text-slate-500">{label}</div>
-      <div className={`mt-1 text-3xl font-bold tabular-nums ${accent ? 'text-emerald-800' : 'text-slate-900'}`}>{value}</div>
-      {sub && <div className="mt-1 text-xs text-slate-500">{sub}</div>}
-    </div>
-  );
-}
-
-export function EmptyState({ title, children }: { title: string; children?: ReactNode }) {
-  return (
-    <div className="rounded-xl border border-dashed border-slate-300 bg-white px-6 py-10 text-center">
-      <div className="text-sm font-medium text-slate-700">{title}</div>
-      {children && <div className="mt-2 text-sm text-slate-500">{children}</div>}
-    </div>
-  );
-}
 
 export function SectionHeader({ title, children }: { title: string; children?: ReactNode }) {
   return (

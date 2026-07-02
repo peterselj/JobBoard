@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
+import { useEffect, useMemo, useState, type CSSProperties } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
 import {
   addReferralPath, createContact, db, deleteOpportunity, logActivity, moveOppToStage, today,
@@ -7,7 +7,7 @@ import {
 } from '../db';
 import { alumniSearchUrl, parseProfileUrl, peopleSearchUrl } from '../lib/linkedin';
 import { burstConfetti } from '../lib/confetti';
-import { daysAgo, formatDate } from '../lib/format';
+import { daysAgo, formatDate, formatTsDate, isoDate } from '../lib/format';
 
 // Palette (matches the approved design tokens).
 const C = {
@@ -67,7 +67,6 @@ function OppDetail({ opp, onClose }: { opp: Opportunity; onClose: () => void }) 
   const activities = useLiveQuery(() => db.activities.toArray(), []) ?? [];
   const settings = useLiveQuery(() => db.settings.get('app'), []);
 
-  const stage = stages.find((s) => s.id === opp.stageId);
   const schools = settings?.schools ?? [];
   const contactsById = useMemo(() => new Map(contacts.map((c) => [c.id!, c])), [contacts]);
   const actsByContact = useMemo(() => {
@@ -123,11 +122,16 @@ function OppDetail({ opp, onClose }: { opp: Opportunity; onClose: () => void }) 
     setDragOver(null);
     const id = Number(e.dataTransfer.getData('text/plain'));
     if (!id) return;
+    // Only celebrate a real advance — re-dropping an already-referred card is a no-op.
+    const moved = paths.find((p) => p.id === id)?.status !== status;
     updateReferralPathStatus(id, status);
-    if (status === 'referral-made') burstConfetti(e.clientX, e.clientY);
+    if (status === 'referral-made' && moved) burstConfetti(e.clientX, e.clientY);
   };
 
   // ---- composer ----
+  // Reuse an existing contact when the input matches one (LinkedIn URL, email,
+  // or full name) — connectors especially recur across opps, and typing
+  // "Maya Chen" twice must not create two Mayas.
   const resolveContact = async (input: string, relationship: Relationship, company?: string): Promise<number> => {
     const text = input.trim();
     const prof = parseProfileUrl(text);
@@ -136,7 +140,15 @@ function OppDetail({ opp, onClose }: { opp: Opportunity; onClose: () => void }) 
       if (existing) return existing.id!;
       return createContact({ firstName: prof.firstName, lastName: prof.lastName, linkedinUrl: prof.linkedinUrl, relationship, company });
     }
-    if (text.includes('@')) return createContact({ firstName: text.split('@')[0], lastName: '', email: text, relationship, company });
+    if (text.includes('@')) {
+      const email = text.toLowerCase();
+      const existing = contacts.find((c) => c.email?.toLowerCase() === email);
+      if (existing) return existing.id!;
+      return createContact({ firstName: text.split('@')[0], lastName: '', email: text, relationship, company });
+    }
+    const lower = text.toLowerCase();
+    const existing = contacts.find((c) => fullName(c).toLowerCase() === lower);
+    if (existing) return existing.id!;
     const parts = text.split(/\s+/);
     return createContact({ firstName: parts[0], lastName: parts.slice(1).join(' '), relationship, company });
   };
@@ -149,7 +161,7 @@ function OppDetail({ opp, onClose }: { opp: Opportunity; onClose: () => void }) 
           <CompanyRoleCell opp={opp} />
           <KpiCell label="Inroads" value={String(nonTerminal.length)} guide="goal 3" color={C.amber} bg={C.amberBg} width={168} />
           <KpiCell label="Days since last activity" value={daysSince == null ? '—' : String(daysSince)} guide={freshest ? `${verbFor(freshest)}${freshestWho ? ` · ${freshestWho.firstName}` : ''}` : 'no activity yet'} color={C.forest} bg="#eef4f0" width={184} />
-          <DetailsCell opp={opp} stage={stage} stages={stages} onClose={onClose} />
+          <DetailsCell opp={opp} stages={stages} onClose={onClose} />
         </header>
 
         {/* ───── BODY ───── */}
@@ -289,7 +301,7 @@ function KpiCell({ label, value, guide, color, bg, width }: { label: string; val
   );
 }
 
-function DetailsCell({ opp, stage, stages, onClose }: { opp: Opportunity; stage?: { name: string; weight: number }; stages: Stage[]; onClose: () => void }) {
+function DetailsCell({ opp, stages, onClose }: { opp: Opportunity; stages: Stage[]; onClose: () => void }) {
   const oppId = opp.id!;
   const band = compBand(opp.compMin, opp.compMax);
   return (
@@ -312,11 +324,11 @@ function DetailsCell({ opp, stage, stages, onClose }: { opp: Opportunity; stage?
 
 const fieldLabel: CSSProperties = { fontSize: 8, letterSpacing: '.05em', textTransform: 'uppercase', color: C.faint, fontWeight: 700 };
 
-function DetailField({ label, value, first, flex, readOnly, children }: { label: string; value?: React.ReactNode; first?: boolean; flex?: boolean; readOnly?: boolean; children?: React.ReactNode }) {
+function DetailField({ label, first, flex, children }: { label: string; first?: boolean; flex?: boolean; children: React.ReactNode }) {
   return (
     <div style={{ padding: first ? '0 16px 0 0' : '0 16px', borderLeft: first ? undefined : `1px solid ${C.line}`, minWidth: flex ? 0 : undefined, flex: flex ? 1 : undefined }}>
       <div style={fieldLabel}>{label}</div>
-      <div style={{ marginTop: 4 }}>{children ?? <span style={{ fontSize: 12, color: readOnly ? C.inkSoft : C.ink, fontWeight: 600 }}>{value}</span>}</div>
+      <div style={{ marginTop: 4 }}>{children}</div>
     </div>
   );
 }
@@ -575,9 +587,7 @@ function ContactEditor({
     onClose();
   };
   const quickLog = (type: Activity['type'], daysBack: number, label: string) => {
-    const d = new Date(); d.setDate(d.getDate() - daysBack);
-    const date = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-    logActivity({ oppId, contactId: target.id!, type, date, notes: label.split(' · ')[0] });
+    logActivity({ oppId, contactId: target.id!, type, date: isoDate(daysBack), notes: label.split(' · ')[0] });
   };
   const logCustom = () => { if (!customAct.trim()) return; logActivity({ oppId, contactId: target.id!, type: 'note', date: customDate, notes: customAct.trim() }); setCustomAct(''); };
 
@@ -589,7 +599,8 @@ function ContactEditor({
   );
 
   const timeline = [...acts].map((a) => ({ key: `a${a.id}`, label: a.notes || a.type, date: formatDate(a.date) }));
-  timeline.push({ key: 'added', label: 'Added as an inroad', date: formatDate(new Date(pathCreatedAt).toISOString().slice(0, 10)) });
+  // Local date, not toISOString (UTC) — an evening add must not show tomorrow's date.
+  timeline.push({ key: 'added', label: 'Added as an inroad', date: formatTsDate(pathCreatedAt) });
 
   return (
     <>

@@ -37,16 +37,6 @@
   --color-emerald-800: #15352a;
   --color-emerald-900: #0f2a21;
 
-  /* Warm-path green mirrors forest/sage */
-  --color-green-50:  #eef4f0;
-  --color-green-200: #cfe0d4;
-  --color-green-500: #5e8f72;
-  --color-green-600: #2f5e4a;
-  --color-green-700: #2f5e4a;
-
-  /* teal (weekly chart accent) → sage family */
-  --color-teal-500: #5e8f72;
-
   /* Gold (remaps amber — KPI/attention warm accent) */
   --color-amber-50:  #faf4e8;
   --color-amber-100: #f4ead2;
@@ -63,12 +53,6 @@
   --color-red-500: #b14a40;
   --color-red-600: #9c3b32;
   --color-red-700: #8a342c;
-
-  /* Relationship sky → muted sage-teal so it sits in the palette */
-  --color-sky-50:  #eef2f1;
-  --color-sky-200: #cdd8d3;
-  --color-sky-500: #5e8f72;
-  --color-sky-700: #3f5a4e;
 
   /* ---- Semantic tokens used by the new dashboard ---- */
   --color-paper: #f3f3ee;
