@@ -126,8 +126,10 @@ export default function Dashboard({ onNavigate }: { onNavigate: Nav }) {
     () =>
       opps.filter(
         (o) =>
+          isLiveActive(o, stagesById) &&
           (stagesById.get(o.stageId)?.weight ?? 0) < 2.5 &&
-          !o.draft && !!o.company && !linkedOppIds.has(o.id!) &&
+          !!o.company && !linkedOppIds.has(o.id!) &&
+          !(o.hygieneSnoozedUntil && o.hygieneSnoozedUntil > Date.now()) &&
           findWarmPaths(o.company, contacts).length === 0,
       ),
     [opps, stagesById, linkedOppIds, contacts],
