@@ -225,6 +225,23 @@ export default function Dashboard({ onNavigate }: { onNavigate: Nav }) {
           <span className="text-base font-extrabold tracking-tight">JobBoard🎯</span>
         </div>
 
+        {/* Add cell — leftmost so adding opps is the closest action to the board */}
+        <div className="flex w-[288px] shrink-0 flex-col justify-center gap-2 border-r px-[14px] py-[10px]" style={{ borderColor: C.line, background: '#f4f8f5' }}>
+          <button onClick={() => setAdding(true)} title="Add a full opportunity (N)" className="flex items-center justify-center gap-[7px] rounded-md px-3 py-[10px] text-[12.5px] font-semibold text-white" style={{ background: C.forest }}>
+            + Add full opp
+            <span style={{ fontFamily: 'var(--font-mono)', fontSize: 9.5, background: 'rgba(255,255,255,.18)', borderRadius: 3, padding: '1px 5px' }}>N</span>
+          </button>
+          <input
+            ref={quickRef}
+            value={quickText}
+            onChange={(e) => setQuickText(e.target.value)}
+            onKeyDown={(e) => e.key === 'Enter' && submitQuick()}
+            placeholder="Quick add: paste URL or type a name ↵"
+            className="w-full rounded-md border bg-white px-2.5 py-[7px] text-[10.5px] outline-none placeholder:text-faint"
+            style={{ borderColor: C.lineStrong }}
+          />
+        </div>
+
         {/* KPIs */}
         {kpis.map((k) => {
           const color = colFor(k.pct);
@@ -255,22 +272,6 @@ export default function Dashboard({ onNavigate }: { onNavigate: Nav }) {
           </div>
         </div>
 
-        {/* Add cell */}
-        <div className="flex w-[288px] shrink-0 flex-col justify-center gap-2 border-l px-[14px] py-[10px]" style={{ borderColor: C.line, background: '#f4f8f5' }}>
-          <button onClick={() => setAdding(true)} title="Add a full opportunity (N)" className="flex items-center justify-center gap-[7px] rounded-md px-3 py-[10px] text-[12.5px] font-semibold text-white" style={{ background: C.forest }}>
-            + Add full opp
-            <span style={{ fontFamily: 'var(--font-mono)', fontSize: 9.5, background: 'rgba(255,255,255,.18)', borderRadius: 3, padding: '1px 5px' }}>N</span>
-          </button>
-          <input
-            ref={quickRef}
-            value={quickText}
-            onChange={(e) => setQuickText(e.target.value)}
-            onKeyDown={(e) => e.key === 'Enter' && submitQuick()}
-            placeholder="Quick add: paste URL or type a name ↵"
-            className="w-full rounded-md border bg-white px-2.5 py-[7px] text-[10.5px] outline-none placeholder:text-faint"
-            style={{ borderColor: C.lineStrong }}
-          />
-        </div>
       </header>
 
       {/* ───────── BODY ───────── */}
@@ -307,14 +308,27 @@ export default function Dashboard({ onNavigate }: { onNavigate: Nav }) {
         {/* RIGHT COLUMN */}
         <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
           {/* filters */}
+          {/* Right-justified, Filter at the far edge — keeps it visually distinct
+              from the quick-add field, which now lives at the header's left. */}
           <div className="flex items-center gap-2 border-b bg-white px-[14px] py-2" style={{ borderColor: C.line }}>
-            <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Filter company, title, location…" className="w-[220px] rounded-[5px] border px-[9px] py-1.5 text-[11.5px] outline-none placeholder:text-faint" style={{ borderColor: C.lineStrong }} />
             {locations.length > 0 && (
               <select value={loc} onChange={(e) => setLoc(e.target.value)} className="rounded-[5px] border bg-white px-2 py-1.5 text-[11.5px]" style={{ borderColor: C.lineStrong, color: C.inkSoft }}>
                 <option value="">All locations</option>
                 {locations.map((l) => <option key={l} value={l}>{l}</option>)}
               </select>
             )}
+            <label className="ml-auto flex items-center gap-1.5 text-[11px]" style={{ color: C.muted }}>
+              Sort
+              <select value={sort} onChange={(e) => setSort(e.target.value as SortKey)} className="rounded-[5px] border bg-white px-2 py-1.5 text-[11.5px]" style={{ borderColor: C.lineStrong, color: C.inkSoft }}>
+                <option value="tier-asc">Tier A → C</option>
+                <option value="tier-desc">Tier C → A</option>
+                <option value="active-desc">Most recently active</option>
+                <option value="active-asc">Least recently active</option>
+                <option value="alpha-asc">Alpha A → Z</option>
+                <option value="alpha-desc">Alpha Z → A</option>
+                <option value="comp-desc">Comp $$$ → $</option>
+              </select>
+            </label>
             <div className="flex gap-1">
               {(['A', 'B', 'C'] as Priority[]).map((p) => {
                 const on = pri.has(p);
@@ -329,18 +343,7 @@ export default function Dashboard({ onNavigate }: { onNavigate: Nav }) {
                 );
               })}
             </div>
-            <label className="ml-auto flex items-center gap-1.5 text-[11px]" style={{ color: C.muted }}>
-              Sort
-              <select value={sort} onChange={(e) => setSort(e.target.value as SortKey)} className="rounded-[5px] border bg-white px-2 py-1.5 text-[11.5px]" style={{ borderColor: C.lineStrong, color: C.inkSoft }}>
-                <option value="tier-asc">Tier A → C</option>
-                <option value="tier-desc">Tier C → A</option>
-                <option value="active-desc">Most recently active</option>
-                <option value="active-asc">Least recently active</option>
-                <option value="alpha-asc">Alpha A → Z</option>
-                <option value="alpha-desc">Alpha Z → A</option>
-                <option value="comp-desc">Comp $$$ → $</option>
-              </select>
-            </label>
+            <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Filter company, title, location…" className="w-[220px] rounded-[5px] border px-[9px] py-1.5 text-[11.5px] outline-none placeholder:text-faint" style={{ borderColor: C.lineStrong }} />
           </div>
 
           {/* board */}
