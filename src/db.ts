@@ -20,6 +20,10 @@ export interface Opportunity {
   company: string;
   role: string;
   jobUrl?: string;
+  // Company's LinkedIn key: page URL plus, when pasted from a "See all
+  // employees" search, the numeric currentCompany IDs for precise searches.
+  companyLinkedinUrl?: string;
+  companyLinkedinIds?: string[];
   location?: string;
   compMin?: number | null;
   compMax?: number | null;

@@ -86,9 +86,25 @@ export function parseQuickAdd(input: string): QuickAdd | null {
 
 // ---------- Deep links into LinkedIn's own search (ToS-safe, no scraping) ----------
 
-/** People search at a company. network: 'F' = 1st degree, 'S' = 2nd degree. */
-export function peopleSearchUrl(company: string, network?: 'F' | 'S'): string {
-  let url = `https://www.linkedin.com/search/results/people/?keywords=${encodeURIComponent(company)}`;
+/**
+ * Keyword fallback: quoted so multi-word names ("Skyroot Aerospace") match as a
+ * phrase instead of OR-ing the words. Quoting single words is harmless.
+ */
+function quotedKeywords(company: string): string {
+  return `keywords=${encodeURIComponent(`"${company.trim()}"`)}`;
+}
+
+/**
+ * People search at a company. network: 'F' = 1st degree, 'S' = 2nd degree.
+ * When the opp has numeric LinkedIn company IDs (see parseCompanyLinkedin),
+ * filter by *current company* — far more precise than a keyword match, which
+ * also hits past employers and profile mentions.
+ */
+export function peopleSearchUrl(company: string, network?: 'F' | 'S', companyIds?: string[]): string {
+  let url = 'https://www.linkedin.com/search/results/people/?';
+  url += companyIds?.length
+    ? `currentCompany=${encodeURIComponent(JSON.stringify(companyIds))}`
+    : quotedKeywords(company);
   if (network) url += `&network=${encodeURIComponent(JSON.stringify([network]))}`;
   return url;
 }
@@ -99,6 +115,45 @@ export function peopleSearchUrl(company: string, network?: 'F' | 'S'): string {
  * the actual people. Users grab the ID once from a filtered search URL — see
  * the instructions in Settings.
  */
-export function alumniSearchUrl(schoolId: string, company: string): string {
-  return `https://www.linkedin.com/search/results/people/?keywords=${encodeURIComponent(company)}&schoolFilter=${encodeURIComponent(JSON.stringify([schoolId]))}`;
+export function alumniSearchUrl(schoolId: string, company: string, companyIds?: string[]): string {
+  const companyPart = companyIds?.length
+    ? `currentCompany=${encodeURIComponent(JSON.stringify(companyIds))}`
+    : quotedKeywords(company);
+  return `https://www.linkedin.com/search/results/people/?${companyPart}&schoolFilter=${encodeURIComponent(JSON.stringify([schoolId]))}`;
+}
+
+// ---------- Company LinkedIn key ----------
+
+export interface CompanyLinkedin {
+  /** Cleaned URL to keep on the opp (company page, or the pasted search URL). */
+  url: string;
+  /** Numeric currentCompany filter IDs, when the pasted URL contained them. */
+  companyIds?: string[];
+}
+
+/**
+ * Parse a pasted company-LinkedIn string. Two accepted shapes:
+ *  1. A people-search URL containing a currentCompany filter — what you get by
+ *     clicking "See all X employees" on a company page. This carries the
+ *     numeric company IDs LinkedIn's current-company filter needs (they can't
+ *     be derived from the page slug), so it unlocks the precise search.
+ *  2. A plain company page URL (linkedin.com/company/<slug>) — kept as a link;
+ *     searches fall back to quoted keywords.
+ */
+export function parseCompanyLinkedin(text: string): CompanyLinkedin | null {
+  const input = text.trim();
+  if (!input) return null;
+  const idsMatch = input.match(/[?&]currentCompany=([^&#\s]+)/i);
+  if (idsMatch) {
+    try {
+      const parsed = JSON.parse(decodeURIComponent(idsMatch[1]));
+      const ids = (Array.isArray(parsed) ? parsed : [parsed]).map(String).filter((s) => /^\d+$/.test(s));
+      if (ids.length) return { url: input, companyIds: ids };
+    } catch {
+      /* fall through to slug parsing */
+    }
+  }
+  const slugMatch = input.match(/(?:https?:\/\/)?(?:[\w-]+\.)?linkedin\.com\/company\/([^/?#\s]+)/i);
+  if (slugMatch) return { url: `https://www.linkedin.com/company/${slugMatch[1]}/` };
+  return null;
 }
