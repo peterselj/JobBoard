@@ -122,6 +122,26 @@ export function alumniSearchUrl(schoolId: string, company: string, companyIds?: 
   return `https://www.linkedin.com/search/results/people/?${companyPart}&schoolFilter=${encodeURIComponent(JSON.stringify([schoolId]))}`;
 }
 
+/**
+ * Extract a numeric LinkedIn school ID from user input: either a bare ID
+ * ("4794") or a people-search URL containing a schoolFilter (what you get
+ * from All filters → School → Show results). Returns null if neither.
+ */
+export function parseSchoolId(text: string): string | null {
+  const input = text.trim();
+  if (!input) return null;
+  if (/^\d+$/.test(input)) return input;
+  const m = input.match(/[?&]schoolFilter=([^&#\s]+)/i);
+  if (!m) return null;
+  try {
+    const parsed = JSON.parse(decodeURIComponent(m[1]));
+    const first = (Array.isArray(parsed) ? parsed : [parsed]).map(String).find((s) => /^\d+$/.test(s));
+    return first ?? null;
+  } catch {
+    return null;
+  }
+}
+
 // ---------- Company LinkedIn key ----------
 
 export interface CompanyLinkedin {

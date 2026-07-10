@@ -6,6 +6,7 @@ import {
   chooseBackupFile, disconnectBackupFile, getBackupState, isBraveBrowser, reconnectBackupFile,
   restoreFromBackupFile, saveNow, subscribeBackup,
 } from '../lib/autobackup';
+import { parseSchoolId } from '../lib/linkedin';
 import { loadSampleData } from '../lib/sampleData';
 import { Button, Field, Input, SectionHeader } from '../components/ui';
 
@@ -151,9 +152,11 @@ function SchoolsEditor({ settings }: { settings: SettingsType }) {
 
   const add = async () => {
     const cleanName = name.trim();
-    const cleanId = schoolId.trim().replace(/\D/g, '');
+    const cleanId = parseSchoolId(schoolId);
     if (!cleanName || !cleanId) {
-      setError('Both a school name and its numeric LinkedIn ID are needed.');
+      setError(!cleanName
+        ? 'Both a school name and its LinkedIn ID (or filtered-search URL) are needed.'
+        : 'Paste the school-filtered search URL (it contains schoolFilter=…) or the numeric ID itself.');
       return;
     }
     if (schools.some((s) => s.id === cleanId)) {
@@ -189,16 +192,15 @@ function SchoolsEditor({ settings }: { settings: SettingsType }) {
       )}
       <div className="flex items-end gap-2">
         <Field label="School name"><Input value={name} onChange={(e) => setName(e.target.value)} className="!w-64" placeholder="e.g. Georgetown University" /></Field>
-        <Field label="LinkedIn school ID"><Input value={schoolId} onChange={(e) => setSchoolId(e.target.value)} className="!w-36" placeholder="e.g. 4794" /></Field>
+        <Field label="School search URL (or ID)"><Input value={schoolId} onChange={(e) => setSchoolId(e.target.value)} className="!w-72" placeholder="paste the filtered-search URL" /></Field>
         <Button variant="primary" onClick={add}>Add school</Button>
       </div>
       {error && <p className="mt-2 text-sm text-red-600">{error}</p>}
       <div className="mt-3 rounded-lg bg-slate-50 p-3 text-xs leading-relaxed text-slate-500">
-        <span className="font-semibold text-slate-600">Finding your school's ID (one time):</span> on LinkedIn, run any
+        <span className="font-semibold text-slate-600">Getting the URL (one time):</span> on LinkedIn, run any
         people search → <span className="font-medium">All filters → School</span> → select your school →{' '}
-        <span className="font-medium">Show results</span>. The page URL will now contain{' '}
-        <code className="rounded bg-slate-200 px-1">schoolFilter=%5B%22<span className="font-bold">4794</span>%22%5D</code>{' '}
-        — that number is the ID. (4794 is Georgetown, for example.)
+        <span className="font-medium">Show results</span>. Then just copy the page URL and paste it above —
+        JobBoard pulls the school's numeric ID out of it for you.
       </div>
     </section>
   );
