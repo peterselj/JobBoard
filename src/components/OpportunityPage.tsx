@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState, type CSSProperties } from 'react';
+import { webLink } from '../lib/handoff';
 import { useLiveQuery } from 'dexie-react-hooks';
 import {
   addReferralPath, createContact, db, deleteOpportunity, logActivity, moveOppToStage, today,
@@ -423,7 +424,8 @@ function UrlField({ opp }: { opp: Opportunity }) {
       ) : opp.jobUrl ? (
         <div className="flex items-center gap-[7px]">
           <span onDoubleClick={() => { setDraft(opp.jobUrl ?? ''); setEditing(true); }} className="truncate" style={{ fontFamily: MONO, fontSize: 12, color: C.inkSoft, maxWidth: 148, cursor: 'pointer' }} title={opp.jobUrl}>{display}</span>
-          <a href={opp.jobUrl} target="_blank" rel="noreferrer" style={{ fontSize: 9.5, fontWeight: 700, color: C.forest, border: `1px solid ${C.lineStrong}`, borderRadius: 5, padding: '3px 8px', flexShrink: 0, textDecoration: 'none' }}>Visit ↗</a>
+          {/* Only an ordinary web link is made clickable; anything else stays as text to edit. */}
+          {webLink(opp.jobUrl) && <a href={webLink(opp.jobUrl)} target="_blank" rel="noreferrer" style={{ fontSize: 9.5, fontWeight: 700, color: C.forest, border: `1px solid ${C.lineStrong}`, borderRadius: 5, padding: '3px 8px', flexShrink: 0, textDecoration: 'none' }}>Visit ↗</a>}
         </div>
       ) : (
         <span onDoubleClick={() => setEditing(true)} style={{ fontSize: 12, color: C.forest, fontWeight: 600, cursor: 'pointer' }}>+ add</span>

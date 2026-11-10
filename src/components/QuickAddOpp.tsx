@@ -2,9 +2,10 @@ import { useState } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { createOpportunity, db, type Priority } from '../db';
 import { formatWeight } from '../lib/format';
+import type { Handoff } from '../lib/handoff';
 import { Button, Field, Input, Modal, PriorityToggle, Select, TextArea } from './ui';
 
-export default function QuickAddOpp({ onClose }: { onClose: () => void }) {
+export default function QuickAddOpp({ onClose, initial }: { onClose: () => void; initial?: Handoff | null }) {
   // Bumping the key remounts a clean form ("Save & add another").
   const [formKey, setFormKey] = useState(0);
   const [lastSaved, setLastSaved] = useState('');
@@ -13,6 +14,8 @@ export default function QuickAddOpp({ onClose }: { onClose: () => void }) {
     <Modal title="Add opportunity" onClose={onClose}>
       <AddOppForm
         key={formKey}
+        // Only the first form is prefilled; "Save & add another" starts clean.
+        initial={formKey === 0 ? initial ?? null : null}
         lastSaved={lastSaved}
         onClose={onClose}
         onSavedAndAddAnother={(company) => {
@@ -25,21 +28,22 @@ export default function QuickAddOpp({ onClose }: { onClose: () => void }) {
 }
 
 function AddOppForm({
-  lastSaved, onClose, onSavedAndAddAnother,
+  initial, lastSaved, onClose, onSavedAndAddAnother,
 }: {
+  initial: Handoff | null;
   lastSaved: string;
   onClose: () => void;
   onSavedAndAddAnother: (company: string) => void;
 }) {
   const stages = useLiveQuery(() => db.stages.orderBy('order').toArray(), []) ?? [];
-  const [company, setCompany] = useState('');
-  const [role, setRole] = useState('');
-  const [jobUrl, setJobUrl] = useState('');
-  const [location, setLocation] = useState('');
+  const [company, setCompany] = useState(initial?.company ?? '');
+  const [role, setRole] = useState(initial?.role ?? '');
+  const [jobUrl, setJobUrl] = useState(initial?.jobUrl ?? '');
+  const [location, setLocation] = useState(initial?.location ?? '');
   const [priority, setPriority] = useState<Priority>('B');
   const [stageId, setStageId] = useState('new-opp');
-  const [compMin, setCompMin] = useState('');
-  const [compMax, setCompMax] = useState('');
+  const [compMin, setCompMin] = useState(initial?.compMin ?? '');
+  const [compMax, setCompMax] = useState(initial?.compMax ?? '');
   const [notes, setNotes] = useState('');
   const [error, setError] = useState('');
 
@@ -76,6 +80,11 @@ function AddOppForm({
 
   return (
     <>
+      {initial && (
+        <p className="mb-3 rounded-md bg-emerald-50 px-3 py-2 text-xs text-emerald-800">
+          {initial.from ? `Sent from ${initial.from}.` : 'Filled in from a link.'} Check the details, set a priority, and save.
+        </p>
+      )}
       <div className="grid grid-cols-2 gap-3">
         <Field label="Company"><Input autoFocus value={company} onChange={(e) => setCompany(e.target.value)} /></Field>
         <Field label="Role"><Input value={role} onChange={(e) => setRole(e.target.value)} /></Field>
