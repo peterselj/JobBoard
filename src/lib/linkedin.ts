@@ -156,19 +156,27 @@ export function companyFindUrl(company: string): string {
   return `https://www.linkedin.com/search/results/companies/?${quotedKeywords(company)}`;
 }
 
+/** People search showing everyone from one school — a quick "is this the right school?" check. */
+export function schoolCheckUrl(schoolId: string): string {
+  return `https://www.linkedin.com/search/results/people/?schoolFilter=${encodeURIComponent(JSON.stringify([schoolId]))}`;
+}
+
 /**
  * Extract a numeric LinkedIn school ID from user input: either a bare ID
- * ("4794") or a people-search URL containing a schoolFilter (what you get
- * from All filters → School → Show results). Returns null if neither.
+ * ("4794"), a people-search URL containing a schoolFilter (what you get from
+ * All filters → School → Show results), or a company People-tab URL containing
+ * facetSchool. Returns null if none.
  */
 export function parseSchoolId(text: string): string | null {
   const input = text.trim();
   if (!input) return null;
   if (/^\d+$/.test(input)) return input;
-  const m = input.match(/[?&]schoolFilter=([^&#\s]+)/i);
+  // schoolFilter: people search. facetSchool: a company page's People tab.
+  const m = input.match(/[?&](?:schoolFilter|facetSchool)=([^&#\s]+)/i);
   if (!m) return null;
   try {
-    const parsed = JSON.parse(decodeURIComponent(m[1]));
+    let parsed: unknown = decodeURIComponent(m[1]);
+    try { parsed = JSON.parse(parsed as string); } catch { parsed = String(parsed).split(','); }
     const first = (Array.isArray(parsed) ? parsed : [parsed]).map(String).find((s) => /^\d+$/.test(s));
     return first ?? null;
   } catch {
