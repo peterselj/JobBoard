@@ -129,7 +129,7 @@ function companyPeopleUrl(slug: string, facets: Record<string, string>): string 
  * See CompanyTarget for the three precision levels.
  */
 export function peopleSearchUrl(co: CompanyTarget, network?: 'F' | 'S'): string {
-  if (!co.ids?.length && co.slug) return companyPeopleUrl(co.slug, network ? { facetNetwork: network } : {});
+  if (!co.ids?.length && co.slug) return companyPeopleUrl(co.slug, network ? { facetConnection: network === 'F' ? 'ConnectionDegree_FIRST' : 'ConnectionDegree_SECOND' } : {});
   let url = 'https://www.linkedin.com/search/results/people/?';
   url += co.ids?.length
     ? `currentCompany=${encodeURIComponent(JSON.stringify(co.ids))}`
