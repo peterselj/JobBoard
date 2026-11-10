@@ -95,31 +95,65 @@ function quotedKeywords(company: string): string {
 }
 
 /**
- * People search at a company. network: 'F' = 1st degree, 'S' = 2nd degree.
- * When the opp has numeric LinkedIn company IDs (see parseCompanyLinkedin),
- * filter by *current company* — far more precise than a keyword match, which
- * also hits past employers and profile mentions.
+ * What we know about an opp's company on LinkedIn. The more we know, the more
+ * precise the Find links get:
+ *  - ids  → people search with a currentCompany filter (exact)
+ *  - slug → the company page's own People tab, which only ever lists current
+ *           employees — so no numeric ID is needed, just the page address
+ *  - name only → quoted keyword search (fuzzy: also hits past employers)
  */
-export function peopleSearchUrl(company: string, network?: 'F' | 'S', companyIds?: string[]): string {
+export interface CompanyTarget {
+  name: string;
+  ids?: string[];
+  slug?: string;
+}
+
+/** Pull the page slug out of a stored company URL (linkedin.com/company/<slug>/). */
+export function companySlug(url?: string): string | undefined {
+  return (url ?? '').match(/linkedin\.com\/company\/([^/?#\s]+)/i)?.[1];
+}
+
+/** True when Find links will show current employees only (not a keyword match). */
+export function isExactCompany(co: CompanyTarget): boolean {
+  return !!(co.ids?.length || co.slug);
+}
+
+/** The company page's People tab — current employees by construction. */
+function companyPeopleUrl(slug: string, facets: Record<string, string>): string {
+  const q = Object.entries(facets).map(([k, v]) => `${k}=${encodeURIComponent(v)}`).join('&');
+  return `https://www.linkedin.com/company/${slug}/people/${q ? `?${q}` : ''}`;
+}
+
+/**
+ * People at a company. network: 'F' = 1st degree, 'S' = 2nd degree.
+ * See CompanyTarget for the three precision levels.
+ */
+export function peopleSearchUrl(co: CompanyTarget, network?: 'F' | 'S'): string {
+  if (!co.ids?.length && co.slug) return companyPeopleUrl(co.slug, network ? { facetConnection: network === 'F' ? 'ConnectionDegree_FIRST' : 'ConnectionDegree_SECOND' } : {});
   let url = 'https://www.linkedin.com/search/results/people/?';
-  url += companyIds?.length
-    ? `currentCompany=${encodeURIComponent(JSON.stringify(companyIds))}`
-    : quotedKeywords(company);
+  url += co.ids?.length
+    ? `currentCompany=${encodeURIComponent(JSON.stringify(co.ids))}`
+    : quotedKeywords(co.name);
   if (network) url += `&network=${encodeURIComponent(JSON.stringify([network]))}`;
   return url;
 }
 
 /**
- * People search filtered to alumni of a school, by LinkedIn's numeric school ID
- * (e.g. 4794 for Georgetown). Unlike the school-page keyword search, this shows
- * the actual people. Users grab the ID once from a filtered search URL — see
- * the instructions in Settings.
+ * Alumni of a school at a company, by LinkedIn's numeric school ID (e.g. 4794
+ * for Georgetown). Users grab the ID once from a filtered search URL — see the
+ * instructions in Settings.
  */
-export function alumniSearchUrl(schoolId: string, company: string, companyIds?: string[]): string {
-  const companyPart = companyIds?.length
-    ? `currentCompany=${encodeURIComponent(JSON.stringify(companyIds))}`
-    : quotedKeywords(company);
+export function alumniSearchUrl(schoolId: string, co: CompanyTarget): string {
+  if (!co.ids?.length && co.slug) return companyPeopleUrl(co.slug, { facetSchool: schoolId });
+  const companyPart = co.ids?.length
+    ? `currentCompany=${encodeURIComponent(JSON.stringify(co.ids))}`
+    : quotedKeywords(co.name);
   return `https://www.linkedin.com/search/results/people/?${companyPart}&schoolFilter=${encodeURIComponent(JSON.stringify([schoolId]))}`;
+}
+
+/** LinkedIn's company search for a name — one click to find the company page. */
+export function companyFindUrl(company: string): string {
+  return `https://www.linkedin.com/search/results/companies/?${quotedKeywords(company)}`;
 }
 
 /**
@@ -151,29 +185,35 @@ export interface CompanyLinkedin {
   companyIds?: string[];
 }
 
+const numericIds = (raw: string): string[] => {
+  let v: unknown = decodeURIComponent(raw);
+  try { v = JSON.parse(v as string); } catch { /* not JSON: a plain or comma-separated list */ }
+  const list = Array.isArray(v) ? v : String(v).split(',');
+  return list.map((x) => String(x).trim()).filter((x) => /^\d+$/.test(x));
+};
+
 /**
- * Parse a pasted company-LinkedIn string. Two accepted shapes:
- *  1. A people-search URL containing a currentCompany filter — what you get by
- *     clicking "See all X employees" on a company page. This carries the
- *     numeric company IDs LinkedIn's current-company filter needs (they can't
- *     be derived from the page slug), so it unlocks the precise search.
- *  2. A plain company page URL (linkedin.com/company/<slug>) — kept as a link;
- *     searches fall back to quoted keywords.
+ * Parse a pasted company-LinkedIn string. Any address from the company works:
+ *  1. The company page, or any tab of it (linkedin.com/company/<slug>/people/,
+ *     /jobs/, …) — the slug is enough for current-employee Find links. If the
+ *     address uses the numeric form (/company/12345/), that is the company ID.
+ *  2. A people-search URL with a currentCompany filter ("See all X employees")
+ *     or a jobs-search URL with f_C — both carry the numeric company IDs.
  */
 export function parseCompanyLinkedin(text: string): CompanyLinkedin | null {
   const input = text.trim();
   if (!input) return null;
-  const idsMatch = input.match(/[?&]currentCompany=([^&#\s]+)/i);
+  const idsMatch = input.match(/[?&](?:currentCompany|f_C)=([^&#\s]+)/i);
   if (idsMatch) {
     try {
-      const parsed = JSON.parse(decodeURIComponent(idsMatch[1]));
-      const ids = (Array.isArray(parsed) ? parsed : [parsed]).map(String).filter((s) => /^\d+$/.test(s));
+      const ids = numericIds(idsMatch[1]);
       if (ids.length) return { url: input, companyIds: ids };
     } catch {
       /* fall through to slug parsing */
     }
   }
-  const slugMatch = input.match(/(?:https?:\/\/)?(?:[\w-]+\.)?linkedin\.com\/company\/([^/?#\s]+)/i);
-  if (slugMatch) return { url: `https://www.linkedin.com/company/${slugMatch[1]}/` };
-  return null;
+  const slug = companySlug(input);
+  if (!slug) return null;
+  const url = `https://www.linkedin.com/company/${slug}/`;
+  return /^\d+$/.test(slug) ? { url, companyIds: [slug] } : { url };
 }
