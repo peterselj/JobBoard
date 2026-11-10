@@ -15,6 +15,7 @@ import { daysAgo, formatExpectedOffers, formatMoney, formatWeight } from '../lib
 import { loadSampleData } from '../lib/sampleData';
 import OpportunityPage from '../components/OpportunityPage';
 import QuickAddOpp from '../components/QuickAddOpp';
+import { takeHandoff, type Handoff } from '../lib/handoff';
 
 // Palette (matches the approved design tokens).
 const C = {
@@ -63,7 +64,10 @@ export default function Dashboard({ onNavigate }: { onNavigate: Nav }) {
   const settings = useLiveQuery(() => db.settings.get('app'), []);
 
   const [selected, setSelected] = useState<number | null>(null);
-  const [adding, setAdding] = useState(false);
+  // An opportunity sent from another tool (JobSnipe) opens the Add form filled in.
+  const [handoff, setHandoff] = useState<Handoff | null>(() => takeHandoff());
+  const [adding, setAdding] = useState(() => handoff !== null);
+  const closeAdd = () => { setAdding(false); setHandoff(null); };
   const [quickText, setQuickText] = useState('');
   const [dragOver, setDragOver] = useState<string | null>(null);
   const quickRef = useRef<HTMLInputElement>(null);
@@ -209,7 +213,7 @@ export default function Dashboard({ onNavigate }: { onNavigate: Nav }) {
           <button onClick={() => setAdding(true)} className="rounded-md bg-forest px-4 py-2 text-sm font-semibold text-white hover:bg-forest-deep">+ Add your first opportunity</button>
           <button onClick={() => loadSampleData()} className="rounded-md border border-line-strong bg-white px-4 py-2 text-sm font-medium text-ink-soft hover:bg-paper-2">Load sample data</button>
         </div>
-        {adding && <QuickAddOpp onClose={() => setAdding(false)} />}
+        {adding && <QuickAddOpp onClose={closeAdd} initial={handoff} />}
       </div>
     );
   }
@@ -423,7 +427,7 @@ export default function Dashboard({ onNavigate }: { onNavigate: Nav }) {
       </div>
 
       {selected != null && <OpportunityPage oppId={selected} onClose={() => setSelected(null)} />}
-      {adding && <QuickAddOpp onClose={() => setAdding(false)} />}
+      {adding && <QuickAddOpp onClose={closeAdd} initial={handoff} />}
     </div>
   );
 }
