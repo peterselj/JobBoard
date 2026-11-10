@@ -50,6 +50,12 @@ the company, plus an **alumni search per school** you add in Settings (uses Link
 school ID in a people-search `schoolFilter`, with in-app instructions for grabbing the ID once).
 Paste a profile URL back into an inroad field and the contact is created from it.
 
+**Current employees only:** paste the company's LinkedIn page address into an opportunity's
+**Company LI** field (the *find ↗* link next to it opens LinkedIn's company search for you). From
+then on the Find links open that company's own People tab, filtered to 1st degree, 2nd degree or
+your school, so you only see people who work there now. Without it, Find falls back to a keyword
+search, which also matches past employees.
+
 ## Your data
 
 Everything is stored in your browser (IndexedDB) — nothing is ever uploaded, no accounts. Each

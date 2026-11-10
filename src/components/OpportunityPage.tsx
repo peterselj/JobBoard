@@ -6,7 +6,7 @@ import {
   updateOpportunity, updateReferralPathStatus,
   type Activity, type Contact, type Opportunity, type PathStatus, type Priority, type Relationship, type Stage,
 } from '../db';
-import { alumniSearchUrl, parseCompanyLinkedin, parseProfileUrl, peopleSearchUrl } from '../lib/linkedin';
+import { alumniSearchUrl, companyFindUrl, companySlug, isExactCompany, parseCompanyLinkedin, parseProfileUrl, peopleSearchUrl, type CompanyTarget } from '../lib/linkedin';
 import { burstConfetti } from '../lib/confetti';
 import { daysAgo, formatDate, formatTsDate, isoDate } from '../lib/format';
 
@@ -435,9 +435,9 @@ function UrlField({ opp }: { opp: Opportunity }) {
 }
 
 /**
- * Company's LinkedIn key. Paste either the company page URL (kept as a link)
- * or the "See all X employees" search URL, whose currentCompany IDs upgrade
- * the Find links from fuzzy keyword search to a precise current-company filter.
+ * Company's LinkedIn key. Paste the company page URL (any tab of it) and the
+ * Find links switch from a fuzzy keyword search to current employees only.
+ * A "See all X employees" search URL works too.
  */
 function CompanyLIField({ opp }: { opp: Opportunity }) {
   const oppId = opp.id!;
@@ -456,18 +456,21 @@ function CompanyLIField({ opp }: { opp: Opportunity }) {
     updateOpportunity(oppId, { companyLinkedinUrl: parsed.url, companyLinkedinIds: parsed.companyIds });
     setEditing(false); setErr(false);
   };
-  const hasIds = !!opp.companyLinkedinIds?.length;
-  const slug = (opp.companyLinkedinUrl ?? '').match(/\/company\/([^/?#]+)/i)?.[1];
-  const display = hasIds ? (slug ? `${slug} · exact ✓` : 'exact search ✓') : slug ?? '';
-  const tip = 'Paste the company LinkedIn page URL — or, for exact current-company searches, click "See all employees" on that page and paste that URL (it carries the numeric company IDs).';
+  const slug = companySlug(opp.companyLinkedinUrl);
+  const display = slug ? `${slug} ✓` : 'exact search ✓';
+  const tip = 'Paste the company\'s LinkedIn page address (linkedin.com/company/…). The Find links then show only people who work there now.';
+  const linkCss: CSSProperties = { fontSize: 12, color: C.forest, fontWeight: 600, cursor: 'pointer', textDecoration: 'none' };
   return (
     <DetailField label="Company LI">
       {editing ? (
         <input autoFocus value={draft} onChange={(e) => { setDraft(e.target.value); setErr(false); }} onBlur={commit} onKeyDown={(e) => { if (e.key === 'Enter') commit(); if (e.key === 'Escape') { setEditing(false); setErr(false); } }} placeholder="linkedin.com/company/…" title={tip} style={{ fontFamily: MONO, fontSize: 11, border: err ? `1.5px solid ${C.brick}` : `1px solid ${C.lineStrong}`, borderRadius: 4, padding: '2px 6px', outline: 'none', width: 148 }} />
       ) : opp.companyLinkedinUrl ? (
-        <a href={opp.companyLinkedinUrl} target="_blank" rel="noreferrer" onDoubleClick={(e) => { e.preventDefault(); setDraft(opp.companyLinkedinUrl ?? ''); setEditing(true); }} className="truncate" title={opp.companyLinkedinUrl} style={{ display: 'inline-block', fontFamily: MONO, fontSize: 12, color: hasIds ? C.forest : C.inkSoft, maxWidth: 148, textDecoration: 'none' }}>{display}</a>
+        <a href={opp.companyLinkedinUrl} target="_blank" rel="noreferrer" onDoubleClick={(e) => { e.preventDefault(); setDraft(opp.companyLinkedinUrl ?? ''); setEditing(true); }} className="truncate" title={`${opp.companyLinkedinUrl}\nFind links show current employees only. Double-click to change.`} style={{ ...linkCss, display: 'inline-block', fontFamily: MONO, maxWidth: 148, fontWeight: 400 }}>{display}</a>
       ) : (
-        <span onDoubleClick={() => setEditing(true)} title={tip} style={{ fontSize: 12, color: C.forest, fontWeight: 600, cursor: 'pointer' }}>+ add</span>
+        <span className="flex items-center gap-2.5">
+          {opp.company.trim() && <a href={companyFindUrl(opp.company)} target="_blank" rel="noreferrer" title="Open LinkedIn's company search, click the right company, then copy its address and paste it here." style={linkCss}>find ↗</a>}
+          <span onClick={() => setEditing(true)} title={tip} style={linkCss}>+ paste</span>
+        </span>
       )}
     </DetailField>
   );
@@ -507,6 +510,12 @@ function Composer({
     : connErr ? 'Add a connector to submit this path' : '';
   const submitA = async () => { if (alum.trim()) { await onCreateAlumni(alum); setAlum(''); } };
 
+  const li: CompanyTarget = { name: company, ids: opp.companyLinkedinIds, slug: companySlug(opp.companyLinkedinUrl) };
+  const exact = isExactCompany(li);
+  const findTip = exact
+    ? 'Opens LinkedIn showing only people who work here now.'
+    : 'Opens a LinkedIn keyword search, which also matches past employees. Add Company LI (top right) to see current employees only.';
+
   const inputCss: CSSProperties = { width: '100%', fontFamily: SANS, fontSize: 11, padding: '8px 10px', border: `1px solid ${C.lineStrong}`, borderRadius: 6, outline: 'none', background: '#fff' };
   const findLink: CSSProperties = { fontSize: 10.5, color: C.forest, fontWeight: 600, cursor: 'pointer', textDecoration: 'none' };
   const sectionTitle: CSSProperties = { fontSize: 11.5, fontWeight: 800 };
@@ -517,12 +526,17 @@ function Composer({
     <aside className="flex shrink-0 flex-col overflow-hidden bg-[#fbfbf8]" style={{ width: 262, borderRight: `1px solid ${C.lineStrong}` }}>
       <div style={barStyle}><span style={barText}>Add an inroad</span></div>
       <div className="thin-scroll flex flex-col gap-[17px] overflow-y-auto px-[14px] py-[15px]">
+        {!exact && company.trim() && (
+          <div style={{ fontSize: 10, lineHeight: 1.45, color: C.muted, background: '#fff', border: `1px dashed ${C.lineStrong}`, borderRadius: 6, padding: '7px 9px' }}>
+            Find ↗ is a keyword search for now. Add <b>Company LI</b> (top right) to see only people who work here today.
+          </div>
+        )}
         <div>
-          <div className="mb-2 flex items-center gap-1.5"><span style={sectionTitle}>1st degree</span><a style={{ ...findLink, marginLeft: 'auto' }} href={peopleSearchUrl(company, 'F', opp.companyLinkedinIds)} target="_blank" rel="noreferrer">Find ↗</a></div>
+          <div className="mb-2 flex items-center gap-1.5"><span style={sectionTitle}>1st degree</span><a style={{ ...findLink, marginLeft: 'auto' }} href={peopleSearchUrl(li, 'F')} title={findTip} target="_blank" rel="noreferrer">Find ↗</a></div>
           <input value={first1} onChange={(e) => setFirst1(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && submit1()} placeholder="Name, email, or URL ↵" style={inputCss} />
         </div>
         <div>
-          <div className="mb-2 flex items-center gap-1.5"><span style={sectionTitle}>2nd degree</span><a style={{ ...findLink, marginLeft: 'auto' }} href={peopleSearchUrl(company, 'S', opp.companyLinkedinIds)} target="_blank" rel="noreferrer">Find ↗</a></div>
+          <div className="mb-2 flex items-center gap-1.5"><span style={sectionTitle}>2nd degree</span><a style={{ ...findLink, marginLeft: 'auto' }} href={peopleSearchUrl(li, 'S')} title={findTip} target="_blank" rel="noreferrer">Find ↗</a></div>
           <input value={conn} onChange={(e) => { setConn(e.target.value); if (e.target.value.trim()) setConnErr(false); }} onKeyDown={(e) => e.key === 'Enter' && submit2()} placeholder="Connector you know ↵" style={{ ...inputCss, border: connErr ? `1.5px solid ${C.brick}` : `1px solid ${C.lineStrong}`, boxShadow: connErr ? '0 0 0 3px rgba(156,59,50,.08)' : undefined }} />
           <div className="ml-1 mt-1.5 flex items-center gap-1.5">
             <span style={{ fontSize: 12, color: C.muted }}>↳</span>
@@ -535,7 +549,7 @@ function Composer({
             <span style={sectionTitle}>Alumni</span>
             <div className="ml-auto flex gap-2">
               {schools.length === 0 && <span style={{ fontSize: 9.5, color: C.faint }}>add schools in Settings</span>}
-              {schools.map((s) => <a key={s.id} style={findLink} href={alumniSearchUrl(s.id, company, opp.companyLinkedinIds)} target="_blank" rel="noreferrer">{s.name} ↗</a>)}
+              {schools.map((s) => <a key={s.id} style={findLink} href={alumniSearchUrl(s.id, li)} title={findTip} target="_blank" rel="noreferrer">{s.name} ↗</a>)}
             </div>
           </div>
           <input value={alum} onChange={(e) => setAlum(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && submitA()} placeholder="Name, email, or URL ↵" style={inputCss} />
