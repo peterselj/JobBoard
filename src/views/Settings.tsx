@@ -6,7 +6,7 @@ import {
   chooseBackupFile, disconnectBackupFile, getBackupState, isBraveBrowser, reconnectBackupFile,
   restoreFromBackupFile, saveNow, subscribeBackup,
 } from '../lib/autobackup';
-import { parseSchoolId } from '../lib/linkedin';
+import { parseSchoolId, schoolCheckUrl } from '../lib/linkedin';
 import { loadSampleData } from '../lib/sampleData';
 import { Button, Field, Input, SectionHeader } from '../components/ui';
 
@@ -150,13 +150,15 @@ function SchoolsEditor({ settings }: { settings: SettingsType }) {
   const [schoolId, setSchoolId] = useState('');
   const [error, setError] = useState('');
 
+  const foundId = parseSchoolId(schoolId);
+
   const add = async () => {
     const cleanName = name.trim();
-    const cleanId = parseSchoolId(schoolId);
+    const cleanId = foundId;
     if (!cleanName || !cleanId) {
       setError(!cleanName
-        ? 'Both a school name and its LinkedIn ID (or filtered-search URL) are needed.'
-        : 'Paste the school-filtered search URL (it contains schoolFilter=…) or the numeric ID itself.');
+        ? 'Type the school\'s name too, so the link has a label.'
+        : 'That address has no school in it. Follow steps 1 to 3 below, then copy the address from LinkedIn\'s address bar.');
       return;
     }
     if (schools.some((s) => s.id === cleanId)) {
@@ -184,24 +186,30 @@ function SchoolsEditor({ settings }: { settings: SettingsType }) {
         <ul className="mb-3 space-y-1.5">
           {schools.map((s) => (
             <li key={s.id} className="flex items-center justify-between rounded-lg border border-slate-200 px-3 py-2 text-sm">
-              <span><span className="font-medium">{s.name}</span><span className="ml-2 text-xs text-slate-400">ID {s.id}</span></span>
+              <span><span className="font-medium">{s.name}</span><span className="ml-2 text-xs text-slate-400">ID {s.id}</span><a href={schoolCheckUrl(s.id)} target="_blank" rel="noreferrer" className="ml-3 text-xs font-medium text-[#234c3a] hover:underline" title="Opens LinkedIn showing people from this school, so you can check it's the right one.">check ↗</a></span>
               <Button size="sm" variant="ghost" onClick={() => remove(s)}>Remove</Button>
             </li>
           ))}
         </ul>
       )}
-      <div className="flex items-end gap-2">
-        <Field label="School name"><Input value={name} onChange={(e) => setName(e.target.value)} className="!w-64" placeholder="e.g. Georgetown University" /></Field>
-        <Field label="School search URL (or ID)"><Input value={schoolId} onChange={(e) => setSchoolId(e.target.value)} className="!w-72" placeholder="paste the filtered-search URL" /></Field>
+      <ol className="mb-3 list-decimal space-y-1 rounded-lg bg-slate-50 py-3 pl-8 pr-3 text-sm leading-relaxed text-slate-600">
+        <li>
+          <a href="https://www.linkedin.com/search/results/people/" target="_blank" rel="noreferrer" className="font-semibold text-[#234c3a] underline">Open LinkedIn's people search ↗</a>
+        </li>
+        <li>Click <span className="font-medium">All filters</span>, find <span className="font-medium">School</span>, tick your school (use "Add a school" if it isn't listed).</li>
+        <li>Click <span className="font-medium">Show results</span>.</li>
+        <li>Copy the address from the top of your browser and paste it below.</li>
+      </ol>
+      <div className="flex flex-wrap items-end gap-2">
+        <Field label="Pasted LinkedIn address"><Input value={schoolId} onChange={(e) => { setSchoolId(e.target.value); setError(''); }} onKeyDown={(e) => e.key === 'Enter' && add()} className="!w-72" placeholder="linkedin.com/search/results/people/?…" /></Field>
+        <Field label="School name"><Input value={name} onChange={(e) => { setName(e.target.value); setError(''); }} onKeyDown={(e) => e.key === 'Enter' && add()} className="!w-64" placeholder="e.g. Georgetown" /></Field>
         <Button variant="primary" onClick={add}>Add school</Button>
       </div>
-      {error && <p className="mt-2 text-sm text-red-600">{error}</p>}
-      <div className="mt-3 rounded-lg bg-slate-50 p-3 text-xs leading-relaxed text-slate-500">
-        <span className="font-semibold text-slate-600">Getting the URL (one time):</span> on LinkedIn, run any
-        people search → <span className="font-medium">All filters → School</span> → select your school →{' '}
-        <span className="font-medium">Show results</span>. Then just copy the page URL and paste it above —
-        JobBoard pulls the school's numeric ID out of it for you.
-      </div>
+      {error
+        ? <p className="mt-2 text-sm text-red-600">{error}</p>
+        : schoolId.trim() && (foundId
+          ? <p className="mt-2 text-sm text-[#234c3a]">✓ Found the school (ID {foundId}). Give it a name and click Add school.</p>
+          : <p className="mt-2 text-sm text-slate-500">No school in that address yet. It should contain "schoolFilter".</p>)}
     </section>
   );
 }
