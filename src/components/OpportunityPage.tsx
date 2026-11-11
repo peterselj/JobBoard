@@ -512,8 +512,10 @@ function Composer({
 
   const li: CompanyTarget = { name: company, ids: opp.companyLinkedinIds, slug: companySlug(opp.companyLinkedinUrl) };
   const exact = isExactCompany(li);
-  const findTip = exact
+  const findTip = li.ids?.length
     ? 'Opens LinkedIn showing only people who work here now.'
+    : exact
+    ? 'Opens the company\'s People page on LinkedIn, showing only people who work here now. Scroll down past the bar charts to see them.'
     : 'Opens a LinkedIn keyword search, which also matches past employees. Add Company LI (top right) to see current employees only.';
 
   const inputCss: CSSProperties = { width: '100%', fontFamily: SANS, fontSize: 11, padding: '8px 10px', border: `1px solid ${C.lineStrong}`, borderRadius: 6, outline: 'none', background: '#fff' };

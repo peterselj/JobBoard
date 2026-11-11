@@ -48,6 +48,8 @@ interface Step {
   place?: 'right';
   title: string;
   body: Dyn<ReactNode>;
+  /** A small picture shown under the text. */
+  art?: ReactNode;
   interactive?: boolean;
   done?: (ctx: Ctx) => boolean;
   /** A helper button that does the step for the user. */
@@ -123,7 +125,8 @@ const STEPS: Step[] = [
     backTo: 'open',
     interactive: true,
     title: 'Find people who work there now',
-    body: <>Each {b('Find ↗')} now opens LinkedIn in a new tab, showing only current {DEMO_COMPANY} employees: people you know (1st degree), or people your connections know (2nd degree). Try one if you like, then come back.</>,
+    body: <>Each {b('Find ↗')} now opens the company's People page on LinkedIn in a new tab, narrowed to people you know (1st degree) or people your connections know (2nd degree). {b('Scroll down past the bar charts')} to see the people themselves. Try one if you like, then come back.</>,
+    art: <LinkedInSketch />,
   },
   {
     id: 'add-inroad',
@@ -172,6 +175,50 @@ const STEPS: Step[] = [
     body: <>Find a job, build inroads, get referred, then apply. Everything you just saw is sample data. Keep playing with it, or clear it and start your own search. Any schools you added are kept either way.</>,
   },
 ];
+
+/**
+ * A looping sketch of the LinkedIn People page: company header, then bar
+ * charts, then (after scrolling) the people. Drawn, not a screenshot, so no
+ * real profiles appear in the app. Holds still on the people if the viewer
+ * prefers reduced motion.
+ */
+function LinkedInSketch() {
+  const grey = '#dfe3dc', line = '#cfd4cb';
+  const bar = (w: string) => <div style={{ height: 5, width: w, background: '#7fa589', borderRadius: 3 }} />;
+  const chart = (
+    <div style={{ flex: 1, border: `1px solid ${line}`, borderRadius: 5, padding: 6, display: 'flex', flexDirection: 'column', gap: 5, background: '#fff' }}>
+      <div style={{ height: 4, width: '55%', background: grey, borderRadius: 2 }} />
+      {bar('90%')}{bar('60%')}{bar('35%')}
+    </div>
+  );
+  const person = (
+    <div style={{ flex: 1, border: '1.5px solid #d9a441', borderRadius: 5, padding: '7px 5px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4, background: '#fffaf0' }}>
+      <div style={{ width: 18, height: 18, borderRadius: '50%', background: '#c9d6cc' }} />
+      <div style={{ height: 4, width: '70%', background: '#9aa298', borderRadius: 2 }} />
+      <div style={{ height: 3, width: '50%', background: grey, borderRadius: 2 }} />
+      <div style={{ fontSize: 8, fontWeight: 700, color: '#234c3a', border: '1px solid #234c3a', borderRadius: 8, padding: '0 6px' }}>2nd</div>
+    </div>
+  );
+  return (
+    <div aria-label="Sketch: on LinkedIn, the people are listed below the bar charts" role="img" style={{ marginTop: 10, border: `1px solid ${line}`, borderRadius: 8, background: '#f3f3ee', height: 104, overflow: 'hidden', position: 'relative' }}>
+      <style>{`
+        @keyframes tour-li-scroll { 0%, 30% { transform: translateY(0) } 55%, 92% { transform: translateY(-86px) } 100% { transform: translateY(0) } }
+        .tour-li-page { animation: tour-li-scroll 5.5s ease-in-out infinite }
+        @media (prefers-reduced-motion: reduce) { .tour-li-page { animation: none; transform: translateY(-86px) } }
+      `}</style>
+      <div className="tour-li-page" style={{ padding: 8, display: 'flex', flexDirection: 'column', gap: 7 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+          <div style={{ width: 16, height: 16, borderRadius: 3, background: '#234c3a' }} />
+          <div style={{ height: 5, width: 70, background: '#9aa298', borderRadius: 2 }} />
+          <div style={{ marginLeft: 'auto', fontSize: 8, fontWeight: 700, color: '#234c3a', borderBottom: '2px solid #234c3a' }}>People</div>
+        </div>
+        <div style={{ display: 'flex', gap: 6 }}>{chart}{chart}{chart}</div>
+        <div style={{ fontSize: 9, fontWeight: 700, color: '#9a6b1f', textAlign: 'center' }}>↓ scroll down ↓</div>
+        <div style={{ display: 'flex', gap: 6 }}>{person}{person}{person}{person}</div>
+      </div>
+    </div>
+  );
+}
 
 const PAD = 6;
 const CARD_W = 340;
@@ -366,6 +413,7 @@ export default function Tour({ view, navigate, onEnd }: {
         </div>
         <div style={{ fontSize: 17, fontWeight: 800, letterSpacing: '-.01em', margin: '5px 0 6px' }}>{step.title}</div>
         <div style={{ fontSize: 13.5, lineHeight: 1.5, color: '#3c453e' }}>{val(step.body, c)}</div>
+        {step.art}
 
         <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginTop: 14, flexWrap: 'wrap' }}>
           <button style={linkBtn} onClick={onEnd}>{last ? '' : 'Skip tour'}</button>
