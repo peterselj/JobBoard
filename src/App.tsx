@@ -7,6 +7,7 @@ import {
 import Dashboard from './views/Dashboard';
 import Settings from './views/Settings';
 import BestPractices from './views/BestPractices';
+import Tour from './components/Tour';
 
 export type View = 'dashboard' | 'settings' | 'best-practices';
 
@@ -19,6 +20,8 @@ export default function App() {
   const [view, setView] = useState<View>('dashboard');
   const [anchor, setAnchor] = useState<string | null>(null);
   const [backup, setBackup] = useState<BackupState | null>(null);
+  // Guided tour: lives here so it stays up while it moves between screens.
+  const [touring, setTouring] = useState(false);
 
   const navigate = (v: View, a?: string) => { setView(v); setAnchor(a ?? null); };
 
@@ -38,20 +41,27 @@ export default function App() {
     return () => clearTimeout(t);
   }, [view, anchor]);
 
-  // Esc returns to the dashboard from a sub-view.
+  // Esc returns to the dashboard from a sub-view (not mid-tour: the tour drives the screens).
   useEffect(() => {
-    if (view === 'dashboard') return;
+    if (view === 'dashboard' || touring) return;
     const h = (e: KeyboardEvent) => { if (e.key === 'Escape') setView('dashboard'); };
     window.addEventListener('keydown', h);
     return () => window.removeEventListener('keydown', h);
-  }, [view]);
+  }, [view, touring]);
+
+  const tour = touring ? <Tour view={view} navigate={navigate} onEnd={() => { setTouring(false); setView('dashboard'); }} /> : null;
 
   const banner = backup && (backup.restorable || backup.needsReconnect)
     ? <BackupBanner state={backup} onOpenSettings={() => navigate('settings')} />
     : null;
 
+  // The tour sits beside the screens (not inside either one) so switching
+  // screens mid-tour doesn't restart it.
+  return <>{screen()}{tour}</>;
+
+  function screen() {
   if (view === 'dashboard') {
-    return <>{banner}<Dashboard onNavigate={navigate} /></>;
+    return <>{banner}<Dashboard onNavigate={navigate} onStartTour={() => setTouring(true)} /></>;
   }
 
   const title = view === 'settings' ? 'Settings' : 'Best Practices';
@@ -73,6 +83,7 @@ export default function App() {
       </main>
     </div>
   );
+  }
 }
 
 /** Thin top strip shown only when the autosave file needs a click (reconnect or restore). */

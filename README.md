@@ -27,6 +27,13 @@ people are shocked how small the number is; that's the point. The dashboard's tr
 weekly-reps rings, and "Do this today" queue keep the volume honest, and Best Practices includes a
 calculator for the pace you need. All stages and weights are editable (Settings).
 
+## New here? Take the tour
+
+On a fresh workspace the welcome screen offers **Take the 2-minute tour**. It loads a sample job
+search and walks you through it with spotlights and short steps: adding a job, opening one, connecting
+a company's LinkedIn page, finding 1st and 2nd degree connections, and setting up your alumni
+schools. At the end you can keep the samples or clear them and start your own.
+
 ## Referral-first workflow
 
 Dropping a resume in a portal barely counts (0.1%). The intended loop:

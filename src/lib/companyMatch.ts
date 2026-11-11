@@ -6,7 +6,7 @@ const SUFFIXES = new Set([
 ]);
 
 /** Normalize a company name for matching: lowercase, strip punctuation and legal suffixes. */
-function normalizeCompany(name: string): string {
+export function normalizeCompany(name: string): string {
   const tokens = name
     .toLowerCase()
     .replace(/&/g, ' and ')
