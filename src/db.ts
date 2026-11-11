@@ -138,6 +138,8 @@ export interface Settings {
   staleDays: number;
   assumedOppToOffer: number; // percent: what share of new opps eventually become offers
   schools: School[];
+  /** The user chose to skip the welcome screen and start from an empty board. */
+  welcomeDismissed?: boolean;
 }
 
 // ---------- Defaults ----------

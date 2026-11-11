@@ -1,6 +1,6 @@
 import { useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
-import { db, updateOpportunity, type Opportunity } from '../db';
+import { addReferralPath, db, saveSettings, updateOpportunity, type Opportunity } from '../db';
 import type { View } from '../App';
 
 /**
@@ -20,21 +20,36 @@ import type { View } from '../App';
 
 interface Ctx {
   opps: Opportunity[];
-  /** Number of opportunities when the current step began. */
-  baseline: number | null;
+  /** Inroads on the demo opportunity. */
+  demoPaths: number;
+  /** Counts when the current step began (null until read). */
+  baseline: { opps: number; demoPaths: number } | null;
   /** The sample opportunity the tour opens. */
   demo?: Opportunity;
+  /** The opportunity the user added during the tour, if any. */
+  added?: Opportunity;
 }
+
+type Dyn<T> = T | ((c: Ctx) => T);
+const val = <T,>(d: Dyn<T>, c: Ctx): T => (typeof d === 'function' ? (d as (c: Ctx) => T)(c) : d);
 
 interface Step {
   id: string;
   /** CSS selector for the spotlight. Several matches are spotlit together. None = centred card. */
   target?: string;
+  /** Short tag pointing at the spotlight ("Click this one"). */
+  label?: string;
+  /** A second thing to light up for context. It can be seen but not clicked. */
+  also?: (c: Ctx) => { target: string; label: string } | null;
   /** Which screen this step lives on (the tour switches to it). */
   view?: View;
   anchor?: string;
+  /** Preferred side for the card. */
+  place?: 'right';
   title: string;
-  body: ReactNode;
+  body: Dyn<ReactNode>;
+  /** A small picture shown under the text. */
+  art?: ReactNode;
   interactive?: boolean;
   done?: (ctx: Ctx) => boolean;
   /** A helper button that does the step for the user. */
@@ -48,11 +63,20 @@ const DEMO_LINKEDIN = 'https://www.linkedin.com/company/stripe/';
 const exists = (sel: string) => !!document.querySelector(sel);
 const b = (t: string) => <span style={{ fontWeight: 700 }}>{t}</span>;
 
+/** Add the sample inroad (Maya introduces Priya) for a user who'd rather not type it. */
+async function addDemoInroad(c: Ctx) {
+  if (c.demo?.id == null) return;
+  const contacts = await db.contacts.toArray();
+  const maya = contacts.find((x) => x.firstName === 'Maya' && x.lastName === 'Chen');
+  const priya = contacts.find((x) => x.firstName === 'Priya' && x.lastName === 'Raman');
+  if (maya?.id != null && priya?.id != null) await addReferralPath(c.demo.id, priya.id, maya.id);
+}
+
 const STEPS: Step[] = [
   {
     id: 'welcome',
     title: 'Welcome to JobBoard',
-    body: <>This takes about two minutes. You're looking at a made-up job search, so there's something to click on. We'll add a job, look inside one, and connect it to LinkedIn so you can find people to refer you.</>,
+    body: <>This takes about two minutes. You're looking at a made-up job search, so there's something to click on. We'll add a job, look inside one, connect it to LinkedIn, and line up someone to refer you.</>,
     next: 'Show me',
   },
   {
@@ -72,38 +96,53 @@ const STEPS: Step[] = [
     target: '[data-tour="quick-add"]',
     title: 'Add a job',
     body: <>Try it. Type a company name in the box (or paste a link to a job posting) and press {b('Enter')}.</>,
-    done: (c) => c.baseline != null && c.opps.length > c.baseline,
+    done: (c) => !!c.baseline && c.opps.length > c.baseline.opps,
   },
   {
     id: 'open',
     target: `[data-tour-opp="${DEMO_COMPANY}"]`,
+    label: 'Click this one',
+    also: (c) => (c.added?.id != null ? { target: `[data-tour-opp-id="${c.added.id}"]`, label: 'Your new job' } : null),
+    place: 'right',
     title: 'It’s on the board',
-    body: <>Your new card landed in {b('New Opp')}, marked “groom” until you fill in the details. Now let's look inside a job: click the {b(DEMO_COMPANY)} card.</>,
+    body: (c) => c.added
+      ? <>There's {b(c.added.company || 'your new job')}, in {b('New Opp')}. It's marked “groom” until you fill in the details, and it will wait there for you. To see what's inside a job, we'll use a sample that has more going on: click the {b(DEMO_COMPANY)} card.</>
+      : <>To see what's inside a job, click the {b(DEMO_COMPANY)} card.</>,
     done: () => exists('[data-tour="inroads"]'),
-  },
-  {
-    id: 'inroads',
-    target: '[data-tour="inroads"]',
-    backTo: 'open',
-    title: 'Inroads: your routes to a referral',
-    body: <>Applying cold rarely works. An inroad is a person who can put your name forward. Here Maya, someone you know, can introduce you to Priya at {DEMO_COMPANY}. Drag a card to the right as the conversation moves along, and into {b('Referred!')} when they refer you.</>,
   },
   {
     id: 'company-li',
     target: '[data-tour="company-li"]',
     backTo: 'open',
-    title: 'Connect the company’s LinkedIn page',
-    body: <>This makes the LinkedIn links precise. Normally you click {b('find ↗')}, pick the company on LinkedIn, copy the address of its page and paste it here, once per company. For the tour, I can fill it in.</>,
+    title: 'First, connect the company’s LinkedIn page',
+    body: <>This is one job, opened up. Before looking for people, tell JobBoard which company this is on LinkedIn. Normally you click {b('find ↗')}, pick the company, copy the address of its page and paste it here, once per company. For the tour, I can fill it in.</>,
     done: (c) => !!c.demo?.companyLinkedinUrl,
     cta: { label: `Fill in ${DEMO_COMPANY}’s for me`, run: async (c) => { if (c.demo?.id != null) await updateOpportunity(c.demo.id, { companyLinkedinUrl: DEMO_LINKEDIN }); } },
   },
   {
     id: 'find',
-    target: '[data-tour="find"]',
+    target: '[data-tour~="find"]',
     backTo: 'open',
     interactive: true,
     title: 'Find people who work there now',
-    body: <>Each {b('Find ↗')} opens LinkedIn in a new tab, showing only current {DEMO_COMPANY} employees: people you know (1st degree) or people your connections know (2nd degree). When you spot someone, copy their profile address, paste it in the box and press Enter. They become an inroad card.</>,
+    body: <>Each {b('Find ↗')} now opens the company's People page on LinkedIn in a new tab, narrowed to people you know (1st degree) or people your connections know (2nd degree). {b('Scroll down past the bar charts')} to see the people themselves. Try one if you like, then come back.</>,
+    art: <LinkedInSketch />,
+  },
+  {
+    id: 'add-inroad',
+    target: '[data-tour~="find-2nd"]',
+    backTo: 'open',
+    title: 'Add the person you found',
+    body: <>Say that search showed your friend {b('Maya Chen')} knows {b('Priya Raman')} at {DEMO_COMPANY}. Type Maya's name in the first box and Priya's in the second, then press {b('Enter')}. (In real use you can paste a LinkedIn profile address instead of a name.)</>,
+    done: (c) => !!c.baseline && c.demoPaths > c.baseline.demoPaths,
+    cta: { label: 'Add them for me', run: addDemoInroad },
+  },
+  {
+    id: 'inroads',
+    target: '[data-tour="inroads"]',
+    backTo: 'open',
+    title: 'That’s an inroad',
+    body: <>An inroad is a route to a referral: here, Maya introducing you to Priya. Applying cold rarely works, so aim for a few inroads per job. Drag a card to the right as the conversation moves along, and into {b('Referred!')} when they put your name forward.</>,
   },
   {
     id: 'alumni',
@@ -137,6 +176,50 @@ const STEPS: Step[] = [
   },
 ];
 
+/**
+ * A looping sketch of the LinkedIn People page: company header, then bar
+ * charts, then (after scrolling) the people. Drawn, not a screenshot, so no
+ * real profiles appear in the app. Holds still on the people if the viewer
+ * prefers reduced motion.
+ */
+function LinkedInSketch() {
+  const grey = '#dfe3dc', line = '#cfd4cb';
+  const bar = (w: string) => <div style={{ height: 5, width: w, background: '#7fa589', borderRadius: 3 }} />;
+  const chart = (
+    <div style={{ flex: 1, border: `1px solid ${line}`, borderRadius: 5, padding: 6, display: 'flex', flexDirection: 'column', gap: 5, background: '#fff' }}>
+      <div style={{ height: 4, width: '55%', background: grey, borderRadius: 2 }} />
+      {bar('90%')}{bar('60%')}{bar('35%')}
+    </div>
+  );
+  const person = (
+    <div style={{ flex: 1, border: '1.5px solid #d9a441', borderRadius: 5, padding: '7px 5px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4, background: '#fffaf0' }}>
+      <div style={{ width: 18, height: 18, borderRadius: '50%', background: '#c9d6cc' }} />
+      <div style={{ height: 4, width: '70%', background: '#9aa298', borderRadius: 2 }} />
+      <div style={{ height: 3, width: '50%', background: grey, borderRadius: 2 }} />
+      <div style={{ fontSize: 8, fontWeight: 700, color: '#234c3a', border: '1px solid #234c3a', borderRadius: 8, padding: '0 6px' }}>2nd</div>
+    </div>
+  );
+  return (
+    <div aria-label="Sketch: on LinkedIn, the people are listed below the bar charts" role="img" style={{ marginTop: 10, border: `1px solid ${line}`, borderRadius: 8, background: '#f3f3ee', height: 104, overflow: 'hidden', position: 'relative' }}>
+      <style>{`
+        @keyframes tour-li-scroll { 0%, 30% { transform: translateY(0) } 55%, 92% { transform: translateY(-86px) } 100% { transform: translateY(0) } }
+        .tour-li-page { animation: tour-li-scroll 5.5s ease-in-out infinite }
+        @media (prefers-reduced-motion: reduce) { .tour-li-page { animation: none; transform: translateY(-86px) } }
+      `}</style>
+      <div className="tour-li-page" style={{ padding: 8, display: 'flex', flexDirection: 'column', gap: 7 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+          <div style={{ width: 16, height: 16, borderRadius: 3, background: '#234c3a' }} />
+          <div style={{ height: 5, width: 70, background: '#9aa298', borderRadius: 2 }} />
+          <div style={{ marginLeft: 'auto', fontSize: 8, fontWeight: 700, color: '#234c3a', borderBottom: '2px solid #234c3a' }}>People</div>
+        </div>
+        <div style={{ display: 'flex', gap: 6 }}>{chart}{chart}{chart}</div>
+        <div style={{ fontSize: 9, fontWeight: 700, color: '#9a6b1f', textAlign: 'center' }}>↓ scroll down ↓</div>
+        <div style={{ display: 'flex', gap: 6 }}>{person}{person}{person}{person}</div>
+      </div>
+    </div>
+  );
+}
+
 const PAD = 6;
 const CARD_W = 340;
 const DIM = 'rgba(15,26,21,.62)';
@@ -158,10 +241,35 @@ function measure(sel: string): Box | null {
   return { top: Math.round(t), left: Math.round(l), width: Math.round(r - l), height: Math.round(btm - t) };
 }
 
-/** Clear the sample pipeline but keep settings (schools, stages, targets). */
+const same = (x: Box | null, y: Box | null) =>
+  x === y || (!!x && !!y && x.top === y.top && x.left === y.left && x.width === y.width && x.height === y.height);
+const grow = (q: Box): Box => ({ top: q.top - PAD, left: q.left - PAD, width: q.width + PAD * 2, height: q.height + PAD * 2 });
+function union(x: Box, y: Box): Box {
+  const top = Math.min(x.top, y.top), left = Math.min(x.left, y.left);
+  return { top, left, width: Math.max(x.left + x.width, y.left + y.width) - left, height: Math.max(x.top + x.height, y.top + y.height) - top };
+}
+
+/** A small tag sitting to the left of a spotlit item, pointing at it. */
+function Tag({ box, text, strong }: { box: Box; text: string; strong?: boolean }) {
+  return (
+    <div style={{
+      position: 'fixed', zIndex: 82, pointerEvents: 'none', top: box.top + box.height / 2, right: `calc(100vw - ${Math.max(box.left - 10, 120)}px)`,
+      transform: 'translateY(-50%)', whiteSpace: 'nowrap', fontSize: 12, fontWeight: 700, padding: '4px 9px', borderRadius: 6,
+      background: strong ? '#d9a441' : 'rgba(255,255,255,.14)', color: strong ? '#1b211d' : '#fff', border: strong ? 'none' : '1px dashed rgba(255,255,255,.7)',
+    }}>
+      {text} →
+    </div>
+  );
+}
+
+/**
+ * Clear the sample pipeline but keep settings (schools, stages, targets), and
+ * land on the empty board rather than back on the welcome screen.
+ */
 async function clearSamples() {
   const tables = [db.opportunities, db.contacts, db.oppContacts, db.referralPaths, db.activities];
   await db.transaction('rw', tables, async () => { for (const t of tables) await t.clear(); });
+  await saveSettings({ welcomeDismissed: true });
 }
 
 export default function Tour({ view, navigate, onEnd }: {
@@ -170,15 +278,22 @@ export default function Tour({ view, navigate, onEnd }: {
   onEnd: () => void;
 }) {
   const [index, setIndex] = useState(0);
-  const [box, setBox] = useState<Box | null>(null);
+  const [boxes, setBoxes] = useState<{ main: Box | null; also: Box | null }>({ main: null, also: null });
+  const startedAt = useRef(Date.now());
   const [cardH, setCardH] = useState(200);
   const cardRef = useRef<HTMLDivElement>(null);
   const step = STEPS[index];
 
   const opps = useLiveQuery(() => db.opportunities.toArray(), []) ?? [];
-  const ctx = useRef<Ctx>({ opps: [], baseline: null });
-  ctx.current.opps = opps;
-  ctx.current.demo = opps.find((o) => o.company === DEMO_COMPANY);
+  const paths = useLiveQuery(() => db.referralPaths.toArray(), []) ?? [];
+  const ctx = useRef<Ctx>({ opps: [], demoPaths: 0, baseline: null });
+  const c = ctx.current;
+  c.opps = opps;
+  // The sample Stripe card (not one the user may have typed themselves during the tour).
+  c.demo = opps.find((o) => o.company === DEMO_COMPANY && o.createdAt < startedAt.current);
+  c.added = opps.filter((o) => o.createdAt >= startedAt.current).sort((x, y) => y.createdAt - x.createdAt)[0];
+  c.demoPaths = paths.filter((p) => p.oppId === c.demo?.id).length;
+  const also = step.also?.(c) ?? null;
 
   const goTo = (id: string) => setIndex(Math.max(0, STEPS.findIndex((s) => s.id === id)));
   const next = () => (index >= STEPS.length - 1 ? onEnd() : setIndex(index + 1));
@@ -188,7 +303,9 @@ export default function Tour({ view, navigate, onEnd }: {
     if (step.view && step.view !== view) navigate(step.view, step.anchor);
     ctx.current.baseline = null;
     let live = true;
-    void db.opportunities.count().then((n) => { if (live) ctx.current.baseline = n; });
+    void Promise.all([db.opportunities.count(), db.referralPaths.toArray()]).then(([n, ps]) => {
+      if (live) ctx.current.baseline = { opps: n, demoPaths: ps.filter((p) => p.oppId === ctx.current.demo?.id).length };
+    });
     return () => { live = false; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [index]);
@@ -201,7 +318,9 @@ export default function Tour({ view, navigate, onEnd }: {
     const tick = () => {
       if (step.done?.(ctx.current)) { next(); return; }
       const m = step.target ? measure(step.target) : null;
-      setBox((prev) => (prev && m && prev.top === m.top && prev.left === m.left && prev.width === m.width && prev.height === m.height ? prev : m));
+      const extra = step.also?.(ctx.current);
+      const a = extra ? measure(extra.target) : null;
+      setBoxes((prev) => (same(prev.main, m) && same(prev.also, a) ? prev : { main: m, also: a }));
       if (step.target && !m) {
         missingSince ??= performance.now();
         if (step.backTo && performance.now() - missingSince > 700) { goTo(step.backTo); return; }
@@ -217,7 +336,7 @@ export default function Tour({ view, navigate, onEnd }: {
 
   useLayoutEffect(() => {
     if (cardRef.current) setCardH(cardRef.current.offsetHeight);
-  }, [index, box]);
+  }, [index, boxes]);
 
   // Keep the dashboard's "N" shortcut from opening a form underneath the tour.
   useEffect(() => {
@@ -231,7 +350,11 @@ export default function Tour({ view, navigate, onEnd }: {
   }, []);
 
   const vw = window.innerWidth, vh = window.innerHeight;
-  const hole = box && { top: box.top - PAD, left: box.left - PAD, width: box.width + PAD * 2, height: box.height + PAD * 2 };
+  const box = boxes.main;
+  const lit = box && boxes.also ? union(box, boxes.also) : box;
+  const hole = lit && grow(lit);
+  const mainRing = box && grow(box);
+  const alsoRing = boxes.also && grow(boxes.also);
   const clickable = !!(step.done || step.interactive);
 
   // Card position: beside the spotlight where there's room, else tucked inside its bottom corner.
@@ -248,7 +371,8 @@ export default function Tour({ view, navigate, onEnd }: {
     };
     const clampX = (x: number) => Math.min(Math.max(12, x), vw - CARD_W - 12);
     const clampY = (y: number) => Math.min(Math.max(12, y), vh - cardH - 12);
-    if (room.bottom >= cardH + 12) cardStyle = { top: hole.top + hole.height + gap, left: clampX(hole.left) };
+    if (step.place === 'right' && room.right >= CARD_W + 12) cardStyle = { top: clampY(hole.top), left: hole.left + hole.width + gap };
+    else if (room.bottom >= cardH + 12) cardStyle = { top: hole.top + hole.height + gap, left: clampX(hole.left) };
     else if (room.right >= CARD_W + 12) cardStyle = { top: clampY(hole.top), left: hole.left + hole.width + gap };
     else if (room.left >= CARD_W + 12) cardStyle = { top: clampY(hole.top), left: hole.left - gap - CARD_W };
     else if (room.top >= cardH + 12) cardStyle = { top: hole.top - gap - cardH, left: clampX(hole.left) };
@@ -272,7 +396,15 @@ export default function Tour({ view, navigate, onEnd }: {
           <div style={{ ...dim, top: hole.top, left: hole.left + hole.width, right: 0, height: hole.height }} />
           {/* look-only steps: an invisible shield so the spotlight can't be clicked */}
           {!clickable && <div style={{ position: 'fixed', zIndex: 80, ...hole }} />}
-          <div style={{ position: 'fixed', zIndex: 81, pointerEvents: 'none', ...hole, borderRadius: 8, boxShadow: '0 0 0 2px #fff, 0 0 0 5px #d9a441' }} />
+          <div style={{ position: 'fixed', zIndex: 81, pointerEvents: 'none', ...mainRing!, borderRadius: 8, boxShadow: '0 0 0 2px #fff, 0 0 0 5px #d9a441' }} />
+          {step.label && <Tag box={mainRing!} text={step.label} strong />}
+          {/* the "also" item: lit so it can be seen, shielded so it can't be clicked */}
+          {alsoRing && also && (
+            <>
+              <div style={{ position: 'fixed', zIndex: 81, ...alsoRing, borderRadius: 8, border: '2px dashed rgba(255,255,255,.95)' }} />
+              <Tag box={alsoRing} text={also.label} />
+            </>
+          )}
         </>
       ) : (
         <div style={{ ...dim, inset: 0 }} />
@@ -284,7 +416,8 @@ export default function Tour({ view, navigate, onEnd }: {
           {step.done && <span style={{ color: '#9a6b1f', marginLeft: 8 }}>YOUR TURN</span>}
         </div>
         <div style={{ fontSize: 17, fontWeight: 800, letterSpacing: '-.01em', margin: '5px 0 6px' }}>{step.title}</div>
-        <div style={{ fontSize: 13.5, lineHeight: 1.5, color: '#3c453e' }}>{step.body}</div>
+        <div style={{ fontSize: 13.5, lineHeight: 1.5, color: '#3c453e' }}>{val(step.body, c)}</div>
+        {step.art}
 
         <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginTop: 14, flexWrap: 'wrap' }}>
           <button style={linkBtn} onClick={onEnd}>{last ? '' : 'Skip tour'}</button>

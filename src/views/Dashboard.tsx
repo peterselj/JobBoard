@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
 import {
-  createDraftOpp, db, deleteOpportunity, logActivity, moveOppToStage, snoozeHygiene,
+  createDraftOpp, db, deleteOpportunity, logActivity, moveOppToStage, saveSettings, snoozeHygiene,
   type Opportunity, type Priority, type Stage,
 } from '../db';
 import {
@@ -198,7 +198,7 @@ export default function Dashboard({ onNavigate, onStartTour }: { onNavigate: Nav
   );
 
   // ---- empty state ----
-  if (opps.length === 0 && contacts.length === 0) {
+  if (opps.length === 0 && contacts.length === 0 && !settings?.welcomeDismissed) {
     return (
       <div className="flex h-screen flex-col items-center justify-center gap-5 bg-paper px-6 text-center">
         <div>
@@ -209,12 +209,44 @@ export default function Dashboard({ onNavigate, onStartTour }: { onNavigate: Nav
             <p>JobBoard can't promise you a new job, but used effectively you should be able to land your new job weeks or months sooner than you would on your own. <span className="font-medium text-ink">Let's begin.</span></p>
           </div>
         </div>
-        <div className="flex flex-wrap justify-center gap-2">
-          <button onClick={() => setAdding(true)} className="rounded-md bg-forest px-4 py-2 text-sm font-semibold text-white hover:bg-forest-deep">+ Add your first opportunity</button>
-          <button onClick={async () => { await loadSampleData(); onStartTour(); }} className="rounded-md border border-forest bg-white px-4 py-2 text-sm font-semibold text-forest hover:bg-paper-2">Take the 2-minute tour</button>
-          <button onClick={() => loadSampleData()} className="rounded-md border border-line-strong bg-white px-4 py-2 text-sm font-medium text-ink-soft hover:bg-paper-2">Load sample data</button>
+        {/* Two ways in: start your own search, or look around first. */}
+        <div className="flex flex-wrap items-start justify-center gap-x-10 gap-y-6">
+          {[
+            {
+              heading: 'Start',
+              note: 'Begin your own search.',
+              buttons: [
+                { label: '+ Add your first opportunity', primary: true, onClick: () => setAdding(true) },
+                { label: 'Go to my empty board', onClick: () => { void saveSettings({ welcomeDismissed: true }); } },
+              ],
+            },
+            {
+              heading: 'Tour',
+              note: 'Look around a sample search first.',
+              buttons: [
+                { label: 'Take the 2-minute tour', outlined: true, onClick: async () => { await loadSampleData({ forTour: true }); onStartTour(); } },
+                { label: 'Load sample data', onClick: () => { void loadSampleData(); } },
+              ],
+            },
+          ].map((col) => (
+            <div key={col.heading} className="flex w-60 flex-col gap-2">
+              <div className="text-[11px] font-bold uppercase tracking-[.1em] text-ink-soft">{col.heading}</div>
+              {col.buttons.map((btn) => (
+                <button
+                  key={btn.label}
+                  onClick={btn.onClick}
+                  className={`rounded-md px-4 py-2 text-sm ${
+                    'primary' in btn && btn.primary ? 'bg-forest font-semibold text-white hover:bg-forest-deep'
+                    : 'outlined' in btn && btn.outlined ? 'border border-forest bg-white font-semibold text-forest hover:bg-paper-2'
+                    : 'border border-line-strong bg-white font-medium text-ink-soft hover:bg-paper-2'}`}
+                >
+                  {btn.label}
+                </button>
+              ))}
+              <div className="text-xs text-faint">{col.note}</div>
+            </div>
+          ))}
         </div>
-        <div className="-mt-2 text-xs text-faint">The tour walks you through a sample job search, step by step.</div>
         {adding && <QuickAddOpp onClose={closeAdd} initial={handoff} />}
       </div>
     );
@@ -461,6 +493,7 @@ function OppCardView({ opp, stale, needsConn, onClick }: { opp: Opportunity; sta
   return (
     <div
       data-tour-opp={opp.company}
+      data-tour-opp-id={opp.id}
       draggable
       onDragStart={(e) => e.dataTransfer.setData('text/plain', String(opp.id))}
       onClick={onClick}

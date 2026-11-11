@@ -512,8 +512,10 @@ function Composer({
 
   const li: CompanyTarget = { name: company, ids: opp.companyLinkedinIds, slug: companySlug(opp.companyLinkedinUrl) };
   const exact = isExactCompany(li);
-  const findTip = exact
+  const findTip = li.ids?.length
     ? 'Opens LinkedIn showing only people who work here now.'
+    : exact
+    ? 'Opens the company\'s People page on LinkedIn, showing only people who work here now. Scroll down past the bar charts to see them.'
     : 'Opens a LinkedIn keyword search, which also matches past employees. Add Company LI (top right) to see current employees only.';
 
   const inputCss: CSSProperties = { width: '100%', fontFamily: SANS, fontSize: 11, padding: '8px 10px', border: `1px solid ${C.lineStrong}`, borderRadius: 6, outline: 'none', background: '#fff' };
@@ -535,7 +537,7 @@ function Composer({
           <div className="mb-2 flex items-center gap-1.5"><span style={sectionTitle}>1st degree</span><a style={{ ...findLink, marginLeft: 'auto' }} href={peopleSearchUrl(li, 'F')} title={findTip} target="_blank" rel="noreferrer">Find ↗</a></div>
           <input value={first1} onChange={(e) => setFirst1(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && submit1()} placeholder="Name, email, or URL ↵" style={inputCss} />
         </div>
-        <div data-tour="find">
+        <div data-tour="find find-2nd">
           <div className="mb-2 flex items-center gap-1.5"><span style={sectionTitle}>2nd degree</span><a style={{ ...findLink, marginLeft: 'auto' }} href={peopleSearchUrl(li, 'S')} title={findTip} target="_blank" rel="noreferrer">Find ↗</a></div>
           <input value={conn} onChange={(e) => { setConn(e.target.value); if (e.target.value.trim()) setConnErr(false); }} onKeyDown={(e) => e.key === 'Enter' && submit2()} placeholder="Connector you know ↵" style={{ ...inputCss, border: connErr ? `1.5px solid ${C.brick}` : `1px solid ${C.lineStrong}`, boxShadow: connErr ? '0 0 0 3px rgba(156,59,50,.08)' : undefined }} />
           <div className="ml-1 mt-1.5 flex items-center gap-1.5">
