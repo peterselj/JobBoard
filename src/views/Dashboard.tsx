@@ -54,7 +54,7 @@ const SORTERS: Record<SortKey, (a: Opportunity, b: Opportunity) => number> = {
   'comp-desc': (a, b) => compMid(b) - compMid(a),
 };
 
-export default function Dashboard({ onNavigate }: { onNavigate: Nav }) {
+export default function Dashboard({ onNavigate, onStartTour }: { onNavigate: Nav; onStartTour: () => void }) {
   const opps = useLiveQuery(() => db.opportunities.toArray(), []) ?? [];
   const stages = useLiveQuery(() => db.stages.orderBy('order').toArray(), []) ?? [];
   const activities = useLiveQuery(() => db.activities.toArray(), []) ?? [];
@@ -209,10 +209,12 @@ export default function Dashboard({ onNavigate }: { onNavigate: Nav }) {
             <p>JobBoard can't promise you a new job, but used effectively you should be able to land your new job weeks or months sooner than you would on your own. <span className="font-medium text-ink">Let's begin.</span></p>
           </div>
         </div>
-        <div className="flex gap-2">
+        <div className="flex flex-wrap justify-center gap-2">
           <button onClick={() => setAdding(true)} className="rounded-md bg-forest px-4 py-2 text-sm font-semibold text-white hover:bg-forest-deep">+ Add your first opportunity</button>
+          <button onClick={async () => { await loadSampleData(); onStartTour(); }} className="rounded-md border border-forest bg-white px-4 py-2 text-sm font-semibold text-forest hover:bg-paper-2">Take the 2-minute tour</button>
           <button onClick={() => loadSampleData()} className="rounded-md border border-line-strong bg-white px-4 py-2 text-sm font-medium text-ink-soft hover:bg-paper-2">Load sample data</button>
         </div>
+        <div className="-mt-2 text-xs text-faint">The tour walks you through a sample job search, step by step.</div>
         {adding && <QuickAddOpp onClose={closeAdd} initial={handoff} />}
       </div>
     );
@@ -238,6 +240,7 @@ export default function Dashboard({ onNavigate }: { onNavigate: Nav }) {
             <span style={{ fontFamily: 'var(--font-mono)', fontSize: 9.5, background: 'rgba(255,255,255,.18)', borderRadius: 3, padding: '1px 5px' }}>N</span>
           </button>
           <input
+            data-tour="quick-add"
             ref={quickRef}
             value={quickText}
             onChange={(e) => setQuickText(e.target.value)}
@@ -252,7 +255,7 @@ export default function Dashboard({ onNavigate }: { onNavigate: Nav }) {
         {kpis.map((k) => {
           const color = colFor(k.pct);
           return (
-            <div key={k.label} className="flex shrink-0 flex-col justify-start" style={{ minWidth: 168, padding: '9px 20px 12px', borderRight: `1px solid ${C.line}`, borderTop: `3px solid ${color}`, background: tintFor(k.pct) }}>
+            <div key={k.label} data-tour="kpi" className="flex shrink-0 flex-col justify-start" style={{ minWidth: 168, padding: '9px 20px 12px', borderRight: `1px solid ${C.line}`, borderTop: `3px solid ${color}`, background: tintFor(k.pct) }}>
               <span style={{ fontSize: 9.5, letterSpacing: '.07em', textTransform: 'uppercase', fontWeight: 700, color: C.inkSoft }}>{k.label}</span>
               <div className="flex items-baseline gap-[9px]" style={{ marginTop: 5 }}>
                 <span style={{ fontFamily: 'var(--font-mono)', fontSize: 34, fontWeight: 500, letterSpacing: '-.03em', color, lineHeight: 1 }}>{k.value}</span>
@@ -283,7 +286,7 @@ export default function Dashboard({ onNavigate }: { onNavigate: Nav }) {
       {/* ───────── BODY ───────── */}
       <div className="flex min-h-0 flex-1">
         {/* LEFT RAIL: Do this today */}
-        <aside className="flex w-[236px] shrink-0 flex-col overflow-hidden border-r" style={{ borderColor: C.lineStrong, background: C.paper2 }}>
+        <aside data-tour="today" className="flex w-[236px] shrink-0 flex-col overflow-hidden border-r" style={{ borderColor: C.lineStrong, background: C.paper2 }}>
           <div className="flex items-center justify-between px-[14px] py-[7px]" style={{ background: C.forestDeep }}>
             <span style={{ fontSize: 9.5, letterSpacing: '.1em', textTransform: 'uppercase', fontWeight: 700, color: '#eaf2ec' }}>Do this today</span>
             <span style={{ fontFamily: 'var(--font-mono)', fontSize: 9.5, color: '#9fc0ad' }}>{queue.length}</span>
@@ -353,7 +356,7 @@ export default function Dashboard({ onNavigate }: { onNavigate: Nav }) {
           </div>
 
           {/* board */}
-          <div className="flex min-h-0 flex-1">
+          <div data-tour="board" className="flex min-h-0 flex-1">
             {board.map(({ stage, list, count }) => (
               <div
                 key={stage.id}
@@ -457,6 +460,7 @@ function OppCardView({ opp, stale, needsConn, onClick }: { opp: Opportunity; sta
 
   return (
     <div
+      data-tour-opp={opp.company}
       draggable
       onDragStart={(e) => e.dataTransfer.setData('text/plain', String(opp.id))}
       onClick={onClick}

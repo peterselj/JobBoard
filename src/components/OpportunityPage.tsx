@@ -179,7 +179,7 @@ function OppDetail({ opp, onClose }: { opp: Opportunity; onClose: () => void }) 
           />
 
           {/* pipeline + terminal */}
-          <div className="flex min-w-0 flex-1 flex-col">
+          <div data-tour="inroads" className="flex min-w-0 flex-1 flex-col">
             <div className="flex min-h-0 flex-1" style={{ background: C.paper }}>
               {COLUMNS.map((col, ci) => {
                 const list = nonTerminal.filter((i) => i.path.status === col.status);
@@ -326,9 +326,9 @@ function DetailsCell({ opp, stages, onClose }: { opp: Opportunity; stages: Stage
 
 const fieldLabel: CSSProperties = { fontSize: 8, letterSpacing: '.05em', textTransform: 'uppercase', color: C.faint, fontWeight: 700 };
 
-function DetailField({ label, first, flex, children }: { label: string; first?: boolean; flex?: boolean; children: React.ReactNode }) {
+function DetailField({ label, first, flex, tour, children }: { label: string; first?: boolean; flex?: boolean; tour?: string; children: React.ReactNode }) {
   return (
-    <div style={{ padding: first ? '0 16px 0 0' : '0 16px', borderLeft: first ? undefined : `1px solid ${C.line}`, minWidth: flex ? 0 : undefined, flex: flex ? 1 : undefined }}>
+    <div data-tour={tour} style={{ padding: first ? '0 16px 0 0' : '0 16px', borderLeft: first ? undefined : `1px solid ${C.line}`, minWidth: flex ? 0 : undefined, flex: flex ? 1 : undefined }}>
       <div style={fieldLabel}>{label}</div>
       <div style={{ marginTop: 4 }}>{children}</div>
     </div>
@@ -461,7 +461,7 @@ function CompanyLIField({ opp }: { opp: Opportunity }) {
   const tip = 'Paste the company\'s LinkedIn page address (linkedin.com/company/…). The Find links then show only people who work there now.';
   const linkCss: CSSProperties = { fontSize: 12, color: C.forest, fontWeight: 600, cursor: 'pointer', textDecoration: 'none' };
   return (
-    <DetailField label="Company LI">
+    <DetailField label="Company LI" tour="company-li">
       {editing ? (
         <input autoFocus value={draft} onChange={(e) => { setDraft(e.target.value); setErr(false); }} onBlur={commit} onKeyDown={(e) => { if (e.key === 'Enter') commit(); if (e.key === 'Escape') { setEditing(false); setErr(false); } }} placeholder="linkedin.com/company/…" title={tip} style={{ fontFamily: MONO, fontSize: 11, border: err ? `1.5px solid ${C.brick}` : `1px solid ${C.lineStrong}`, borderRadius: 4, padding: '2px 6px', outline: 'none', width: 148 }} />
       ) : opp.companyLinkedinUrl ? (
@@ -531,11 +531,11 @@ function Composer({
             Find ↗ is a keyword search for now. Add <b>Company LI</b> (top right) to see only people who work here today.
           </div>
         )}
-        <div>
+        <div data-tour="find">
           <div className="mb-2 flex items-center gap-1.5"><span style={sectionTitle}>1st degree</span><a style={{ ...findLink, marginLeft: 'auto' }} href={peopleSearchUrl(li, 'F')} title={findTip} target="_blank" rel="noreferrer">Find ↗</a></div>
           <input value={first1} onChange={(e) => setFirst1(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && submit1()} placeholder="Name, email, or URL ↵" style={inputCss} />
         </div>
-        <div>
+        <div data-tour="find">
           <div className="mb-2 flex items-center gap-1.5"><span style={sectionTitle}>2nd degree</span><a style={{ ...findLink, marginLeft: 'auto' }} href={peopleSearchUrl(li, 'S')} title={findTip} target="_blank" rel="noreferrer">Find ↗</a></div>
           <input value={conn} onChange={(e) => { setConn(e.target.value); if (e.target.value.trim()) setConnErr(false); }} onKeyDown={(e) => e.key === 'Enter' && submit2()} placeholder="Connector you know ↵" style={{ ...inputCss, border: connErr ? `1.5px solid ${C.brick}` : `1px solid ${C.lineStrong}`, boxShadow: connErr ? '0 0 0 3px rgba(156,59,50,.08)' : undefined }} />
           <div className="ml-1 mt-1.5 flex items-center gap-1.5">
@@ -544,7 +544,7 @@ function Composer({
           </div>
           {path2err && <div style={{ fontSize: 9, color: C.brick, margin: '5px 0 0 22px', fontWeight: 600 }}>{path2err}</div>}
         </div>
-        <div>
+        <div data-tour="alumni">
           <div className="mb-2 flex items-center gap-2">
             <span style={sectionTitle}>Alumni</span>
             <div className="ml-auto flex gap-2">
