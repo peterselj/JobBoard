@@ -211,7 +211,7 @@ export default function Dashboard({ onNavigate, onStartTour }: { onNavigate: Nav
         </div>
         <div className="flex flex-wrap justify-center gap-2">
           <button onClick={() => setAdding(true)} className="rounded-md bg-forest px-4 py-2 text-sm font-semibold text-white hover:bg-forest-deep">+ Add your first opportunity</button>
-          <button onClick={async () => { await loadSampleData(); onStartTour(); }} className="rounded-md border border-forest bg-white px-4 py-2 text-sm font-semibold text-forest hover:bg-paper-2">Take the 2-minute tour</button>
+          <button onClick={async () => { await loadSampleData({ forTour: true }); onStartTour(); }} className="rounded-md border border-forest bg-white px-4 py-2 text-sm font-semibold text-forest hover:bg-paper-2">Take the 2-minute tour</button>
           <button onClick={() => loadSampleData()} className="rounded-md border border-line-strong bg-white px-4 py-2 text-sm font-medium text-ink-soft hover:bg-paper-2">Load sample data</button>
         </div>
         <div className="-mt-2 text-xs text-faint">The tour walks you through a sample job search, step by step.</div>
@@ -461,6 +461,7 @@ function OppCardView({ opp, stale, needsConn, onClick }: { opp: Opportunity; sta
   return (
     <div
       data-tour-opp={opp.company}
+      data-tour-opp-id={opp.id}
       draggable
       onDragStart={(e) => e.dataTransfer.setData('text/plain', String(opp.id))}
       onClick={onClick}

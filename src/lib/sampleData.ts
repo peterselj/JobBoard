@@ -9,8 +9,11 @@ function dateStr(daysBack: number): string {
   return `${d.getFullYear()}-${m}-${day}`;
 }
 
-/** Load a demo pipeline so the app's features are visible immediately. Adds on top of existing data. */
-export async function loadSampleData() {
+/**
+ * Load a demo pipeline so the app's features are visible immediately. Adds on top of existing data.
+ * `forTour` leaves out the Stripe inroad (Maya → Priya): the guided tour has the user add it.
+ */
+export async function loadSampleData({ forTour = false }: { forTour?: boolean } = {}) {
   const now = Date.now();
 
   const contacts: Contact[] = [
@@ -49,7 +52,7 @@ export async function loadSampleData() {
     { oppId: datadog, targetContactId: maya, viaContactId: null, status: 'referral-made', createdAt: now - 14 * DAY, updatedAt: now - 8 * DAY },
     { oppId: linear, targetContactId: alex, viaContactId: null, status: 'referral-made', createdAt: now - 17 * DAY, updatedAt: now - 16 * DAY },
   ];
-  await db.referralPaths.bulkAdd(paths);
+  await db.referralPaths.bulkAdd(forTour ? paths.filter((p) => p.oppId !== stripe) : paths);
 
   const acts: Activity[] = [
     { oppId: figma, contactId: jordan, type: 'outreach', date: dateStr(9), notes: 'Pinged Jordan on LinkedIn about the Growth PM role', createdAt: now - 9 * DAY },

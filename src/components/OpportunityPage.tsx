@@ -535,7 +535,7 @@ function Composer({
           <div className="mb-2 flex items-center gap-1.5"><span style={sectionTitle}>1st degree</span><a style={{ ...findLink, marginLeft: 'auto' }} href={peopleSearchUrl(li, 'F')} title={findTip} target="_blank" rel="noreferrer">Find ↗</a></div>
           <input value={first1} onChange={(e) => setFirst1(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && submit1()} placeholder="Name, email, or URL ↵" style={inputCss} />
         </div>
-        <div data-tour="find">
+        <div data-tour="find find-2nd">
           <div className="mb-2 flex items-center gap-1.5"><span style={sectionTitle}>2nd degree</span><a style={{ ...findLink, marginLeft: 'auto' }} href={peopleSearchUrl(li, 'S')} title={findTip} target="_blank" rel="noreferrer">Find ↗</a></div>
           <input value={conn} onChange={(e) => { setConn(e.target.value); if (e.target.value.trim()) setConnErr(false); }} onKeyDown={(e) => e.key === 'Enter' && submit2()} placeholder="Connector you know ↵" style={{ ...inputCss, border: connErr ? `1.5px solid ${C.brick}` : `1px solid ${C.lineStrong}`, boxShadow: connErr ? '0 0 0 3px rgba(156,59,50,.08)' : undefined }} />
           <div className="ml-1 mt-1.5 flex items-center gap-1.5">
