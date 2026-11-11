@@ -1,6 +1,6 @@
 import { useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
-import { addReferralPath, db, updateOpportunity, type Opportunity } from '../db';
+import { addReferralPath, db, saveSettings, updateOpportunity, type Opportunity } from '../db';
 import type { View } from '../App';
 
 /**
@@ -262,10 +262,14 @@ function Tag({ box, text, strong }: { box: Box; text: string; strong?: boolean }
   );
 }
 
-/** Clear the sample pipeline but keep settings (schools, stages, targets). */
+/**
+ * Clear the sample pipeline but keep settings (schools, stages, targets), and
+ * land on the empty board rather than back on the welcome screen.
+ */
 async function clearSamples() {
   const tables = [db.opportunities, db.contacts, db.oppContacts, db.referralPaths, db.activities];
   await db.transaction('rw', tables, async () => { for (const t of tables) await t.clear(); });
+  await saveSettings({ welcomeDismissed: true });
 }
 
 export default function Tour({ view, navigate, onEnd }: {

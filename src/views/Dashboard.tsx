@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
 import {
-  createDraftOpp, db, deleteOpportunity, logActivity, moveOppToStage, snoozeHygiene,
+  createDraftOpp, db, deleteOpportunity, logActivity, moveOppToStage, saveSettings, snoozeHygiene,
   type Opportunity, type Priority, type Stage,
 } from '../db';
 import {
@@ -198,7 +198,7 @@ export default function Dashboard({ onNavigate, onStartTour }: { onNavigate: Nav
   );
 
   // ---- empty state ----
-  if (opps.length === 0 && contacts.length === 0) {
+  if (opps.length === 0 && contacts.length === 0 && !settings?.welcomeDismissed) {
     return (
       <div className="flex h-screen flex-col items-center justify-center gap-5 bg-paper px-6 text-center">
         <div>
@@ -215,6 +215,7 @@ export default function Dashboard({ onNavigate, onStartTour }: { onNavigate: Nav
           <button onClick={() => loadSampleData()} className="rounded-md border border-line-strong bg-white px-4 py-2 text-sm font-medium text-ink-soft hover:bg-paper-2">Load sample data</button>
         </div>
         <div className="-mt-2 text-xs text-faint">The tour walks you through a sample job search, step by step.</div>
+        <button onClick={() => saveSettings({ welcomeDismissed: true })} className="text-sm font-medium text-forest underline-offset-4 hover:underline">Or skip straight to an empty board →</button>
         {adding && <QuickAddOpp onClose={closeAdd} initial={handoff} />}
       </div>
     );
