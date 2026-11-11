@@ -1,5 +1,6 @@
 import Dexie, { type EntityTable } from 'dexie';
 import { parseQuickAdd } from './lib/linkedin';
+import { normalizeCompany } from './lib/companyMatch';
 
 // ---------- Types ----------
 
@@ -258,8 +259,22 @@ export function today(): string {
   return `${d.getFullYear()}-${m}-${day}`;
 }
 
+/**
+ * The Company LI key (page URL + numeric IDs) another opportunity at the same
+ * company already has — so a second role at Stripe doesn't need it pasted again.
+ */
+async function knownCompanyLinkedin(company: string, exceptId?: number) {
+  const key = normalizeCompany(company);
+  if (!key) return null;
+  const match = (await db.opportunities.toArray()).find(
+    (o) => o.id !== exceptId && o.companyLinkedinUrl && normalizeCompany(o.company) === key,
+  );
+  return match ? { companyLinkedinUrl: match.companyLinkedinUrl, companyLinkedinIds: match.companyLinkedinIds } : null;
+}
+
 export async function createOpportunity(data: Partial<Opportunity> = {}): Promise<number> {
   const now = Date.now();
+  const inherited = data.company && !data.companyLinkedinUrl ? await knownCompanyLinkedin(data.company) : null;
   // company/role default to empty — they're no longer required, so quick-add
   // drafts (and partially-known opps) can be saved and groomed later.
   const id = await db.opportunities.add({
@@ -267,6 +282,7 @@ export async function createOpportunity(data: Partial<Opportunity> = {}): Promis
     role: '',
     priority: 'B',
     stageId: 'new-opp',
+    ...inherited,
     ...data,
     createdAt: now,
     updatedAt: now,
@@ -293,7 +309,22 @@ export async function createDraftOpp(input: string): Promise<number | null> {
 }
 
 export async function updateOpportunity(id: number, changes: Partial<Opportunity>) {
-  await db.opportunities.update(id, { ...changes, updatedAt: Date.now() });
+  const before = await db.opportunities.get(id);
+  // Renamed to a company we already hold a Company LI for (and this opp has none): reuse it.
+  let inherited = null;
+  if (changes.company && !('companyLinkedinUrl' in changes) && !before?.companyLinkedinUrl) {
+    inherited = await knownCompanyLinkedin(changes.company, id);
+  }
+  await db.opportunities.update(id, { ...inherited, ...changes, updatedAt: Date.now() });
+  // A Company LI just set here also fills in this company's other opps that lack one.
+  if (changes.companyLinkedinUrl) {
+    const key = normalizeCompany(changes.company ?? before?.company ?? '');
+    if (key) {
+      await db.opportunities
+        .filter((o) => o.id !== id && !o.companyLinkedinUrl && normalizeCompany(o.company) === key)
+        .modify({ companyLinkedinUrl: changes.companyLinkedinUrl, companyLinkedinIds: changes.companyLinkedinIds });
+    }
+  }
 }
 
 export async function moveOppToStage(oppId: number, stageId: string) {
