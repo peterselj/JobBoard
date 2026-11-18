@@ -16,6 +16,7 @@
 // ─────────────────────────────────────────────────────────────────────────
 
 import { db } from '../db';
+import { onLocalChange } from './changes';
 import { collectBackup, importBackup, type BackupPayload } from './backup';
 
 export const FS_SUPPORTED = typeof window !== 'undefined' && 'showSaveFilePicker' in window;
@@ -179,18 +180,12 @@ function start(h: FileHandle) {
   set({ connected: true, fileName: h.name, needsReconnect: false, restorable: false });
 }
 
-// Register dirty-tracking hooks on every data table, once.
+// Every change to the board, from this tab, schedules a write.
 let hooksInstalled = false;
 function installHooks() {
   if (hooksInstalled) return;
   hooksInstalled = true;
-  for (const t of db.tables) {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const table = t as any;
-    table.hook('creating', () => { markDirty(); });
-    table.hook('updating', () => { markDirty(); });
-    table.hook('deleting', () => { markDirty(); });
-  }
+  onLocalChange(markDirty);
 }
 
 /** Called once on app load: set up persistence and resume autosave if possible. */

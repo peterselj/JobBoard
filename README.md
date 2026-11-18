@@ -65,12 +65,19 @@ search, which also matches past employees.
 
 ## Your data
 
-Everything is stored in your browser (IndexedDB) — nothing is ever uploaded, no accounts. Each
-visitor gets their own private workspace, so sharing the URL with a friend gives them a fresh,
-separate pipeline. For durability beyond the browser, set up the **autosave backup file**
-(Settings → Local backup file, Chromium browsers): the app silently rewrites a JSON file on your
-machine after every change and offers one-click restore if the browser is ever wiped. Manual
-export/import works everywhere.
+Everything is stored in your browser (IndexedDB). Each visitor gets their own private workspace, so
+sharing the URL with a friend gives them a fresh, separate pipeline. For durability beyond the
+browser, set up the **autosave backup file** (Settings → Local backup file, Chromium browsers): the
+app silently rewrites a JSON file on your machine after every change and offers one-click restore if
+the browser is ever wiped. Manual export/import works everywhere.
+
+**Sync between computers (optional).** Sign in with your email (Settings → Sync between computers)
+and your board is also saved to your account a few seconds after each change, so it loads on any
+computer where you sign in. The browser copy is still what the page works from, so it stays fast and
+works offline. If two computers both changed while apart, the page asks which board to keep and
+saves the other to Downloads first. If you never sign in, nothing is uploaded and the page doesn't
+contact the server at all. Sign-in is switched on by the owner once (`docs/SETUP.md`, which also
+covers who can see a synced board).
 
 ## Development
 
@@ -78,10 +85,11 @@ export/import works everywhere.
 npm install
 npm run dev     # local dev server
 npm run build   # type-check + production build
+npm test        # sync logic, and the database rules (Postgres runs in-process via PGlite)
 ```
 
 Pushes to `main` auto-deploy to GitHub Pages via Actions. Stack: Vite, React, TypeScript,
-Tailwind CSS, Dexie (IndexedDB).
+Tailwind CSS, Dexie (IndexedDB); optional sync through Supabase (`supabase/migrations/`).
 
 ## Versions
 

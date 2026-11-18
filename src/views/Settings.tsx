@@ -9,6 +9,7 @@ import {
 import { parseSchoolId, schoolCheckUrl } from '../lib/linkedin';
 import { loadSampleData } from '../lib/sampleData';
 import { Button, Field, Input, SectionHeader } from '../components/ui';
+import { SyncSection, useSync } from '../components/Sync';
 
 export default function Settings() {
   const stages = useLiveQuery(() => db.stages.orderBy('order').toArray(), []) ?? [];
@@ -19,6 +20,7 @@ export default function Settings() {
       <StageEditor stages={stages} />
       {settings && <TargetsEditor settings={settings} />}
       {settings && <SchoolsEditor settings={settings} />}
+      <SyncSection />
       <BackupSection />
       <DataSection />
       <SharingSection />
@@ -293,6 +295,7 @@ function BackupSection() {
 // ---------- Data ----------
 
 function DataSection() {
+  const sync = useSync();
   const fileRef = useRef<HTMLInputElement>(null);
   const [message, setMessage] = useState('');
 
@@ -312,8 +315,10 @@ function DataSection() {
     <section className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
       <SectionHeader title="Your data" />
       <p className="mb-3 text-sm text-slate-500">
-        Everything lives in this browser only — nothing is uploaded anywhere. Export a backup regularly
-        (and before clearing browser data); the file restores your whole workspace on any machine.
+        {sync.email
+          ? <>Your board lives in this browser and is synced to your account ({sync.email}). </>
+          : <>Everything lives in this browser only — nothing is uploaded anywhere. </>}
+        Export a backup regularly (and before clearing browser data); the file restores your whole workspace on any machine.
       </p>
       <div className="flex flex-wrap items-center gap-2">
         <Button variant="primary" onClick={() => exportBackup()}>Export backup (JSON)</Button>
@@ -341,13 +346,14 @@ function DataSection() {
 }
 
 function SharingSection() {
+  const sync = useSync();
   return (
     <section className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
       <SectionHeader title="Sharing with a friend" />
       <p className="text-sm text-slate-500">
-        Just send them this site's URL. Data is stored per-browser, so they automatically get their own private,
-        empty workspace — no accounts, and you'll never see each other's pipelines. To move <em>your</em> data to
-        another computer, use Export backup → Import backup.
+        Just send them this site's URL. Data is stored per-browser (and per-account if they sign in), so they get their own private,
+        empty workspace, and you'll never see each other's pipelines. To move <em>your</em> data to
+        another computer, {sync.configured ? <>sign in under Sync between computers on both, or </> : null}use Export backup → Import backup.
       </p>
     </section>
   );

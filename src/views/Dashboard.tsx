@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
+import { cloudConfigured } from '../lib/cloud';
 import { useLiveQuery } from 'dexie-react-hooks';
 import {
   createDraftOpp, db, deleteOpportunity, logActivity, moveOppToStage, saveSettings, snoozeHygiene,
@@ -247,6 +248,11 @@ export default function Dashboard({ onNavigate, onStartTour }: { onNavigate: Nav
             </div>
           ))}
         </div>
+        {cloudConfigured && (
+          <button onClick={() => onNavigate('settings', 'settings-sync')} className="text-sm font-medium text-forest underline-offset-2 hover:underline">
+            Already using JobBoard on another computer? Sign in to bring your board here →
+          </button>
+        )}
         {adding && <QuickAddOpp onClose={closeAdd} initial={handoff} />}
       </div>
     );

@@ -19,14 +19,18 @@ export async function collectBackup(): Promise<BackupPayload> {
 }
 
 export async function exportBackup() {
-  const payload = await collectBackup();
+  downloadBackup(await collectBackup(), `jobboard-backup-${today()}.json`);
+}
+
+/** Save a backup to the computer's Downloads folder. */
+export function downloadBackup(payload: BackupPayload, fileName: string) {
   const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url;
-  a.download = `jobboard-backup-${today()}.json`;
+  a.download = fileName;
   a.click();
-  URL.revokeObjectURL(url);
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 
 export interface RestoreResult {

@@ -8,6 +8,8 @@ import Dashboard from './views/Dashboard';
 import Settings from './views/Settings';
 import BestPractices from './views/BestPractices';
 import Tour from './components/Tour';
+import { SyncChoiceDialog, SyncOfflineBanner } from './components/Sync';
+import { initSync } from './lib/sync';
 
 export type View = 'dashboard' | 'settings' | 'best-practices';
 
@@ -28,6 +30,7 @@ export default function App() {
   useEffect(() => {
     const unsub = subscribeBackup(setBackup);
     void initAutoBackup();
+    void initSync();
     return unsub;
   }, []);
 
@@ -57,7 +60,7 @@ export default function App() {
 
   // The tour sits beside the screens (not inside either one) so switching
   // screens mid-tour doesn't restart it.
-  return <>{screen()}{tour}</>;
+  return <>{screen()}{tour}<SyncOfflineBanner /><SyncChoiceDialog /></>;
 
   function screen() {
   if (view === 'dashboard') {
