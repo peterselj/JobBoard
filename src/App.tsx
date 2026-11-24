@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { APP_VERSION } from './version';
 import {
-  dismissRestore, initAutoBackup, reconnectBackupFile, restoreFromBackupFile,
+  initAutoBackup, reconnectBackupFile, restoreFromBackupFile, saveNow,
   subscribeBackup, type BackupState,
 } from './lib/autobackup';
 import Dashboard from './views/Dashboard';
@@ -51,7 +51,7 @@ export default function App() {
 
   const tour = touring ? <Tour view={view} navigate={navigate} onEnd={() => { setTouring(false); setView('dashboard'); }} /> : null;
 
-  const banner = backup && (backup.restorable || backup.needsReconnect)
+  const banner = backup && (backup.restorable || backup.needsReconnect || backup.shrinkBlocked)
     ? <BackupBanner state={backup} onOpenSettings={() => navigate('settings')} />
     : null;
 
@@ -90,7 +90,25 @@ export default function App() {
 function BackupBanner({ state, onOpenSettings }: { state: BackupState; onOpenSettings: () => void }) {
   return (
     <div className="fixed inset-x-0 top-0 z-[60] flex items-center gap-3 bg-forest px-4 py-2 text-sm text-white shadow-md">
-      {state.restorable ? (
+      {state.shrinkBlocked ? (
+        <>
+          <span className="min-w-0 flex-1 truncate">
+            Autosave paused: saving now would shrink <span className="font-semibold">{state.fileName}</span> from {state.shrinkBlocked.was} to {state.shrinkBlocked.now} opportunities and contacts.
+          </span>
+          <button
+            onClick={async () => { if (window.confirm('Replace everything here with your backup file?')) await restoreFromBackupFile(); }}
+            className="shrink-0 rounded-md bg-white/15 px-3 py-1 font-semibold hover:bg-white/25"
+          >
+            Restore from file
+          </button>
+          <button
+            onClick={async () => { if (window.confirm(`Overwrite your backup file? It will keep only the ${state.shrinkBlocked?.now ?? 0} records in this browser.`)) await saveNow(true); }}
+            className="shrink-0 rounded-md px-3 py-1 text-white/80 hover:text-white"
+          >
+            Save anyway
+          </button>
+        </>
+      ) : state.restorable ? (
         <>
           <span className="min-w-0 flex-1 truncate">
             This browser has no data, but your backup file <span className="font-semibold">{state.fileName}</span> has a saved copy.
@@ -110,7 +128,7 @@ function BackupBanner({ state, onOpenSettings }: { state: BackupState; onOpenSet
           <button onClick={() => reconnectBackupFile()} className="shrink-0 rounded-md bg-white/15 px-3 py-1 font-semibold hover:bg-white/25">Reconnect</button>
         </>
       )}
-      <button onClick={() => { dismissRestore(); onOpenSettings(); }} className="shrink-0 rounded-md px-2 py-1 text-white/70 hover:text-white" title="Manage in Settings">Settings</button>
+      <button onClick={onOpenSettings} className="shrink-0 rounded-md px-2 py-1 text-white/70 hover:text-white" title="Manage in Settings">Settings</button>
     </div>
   );
 }
