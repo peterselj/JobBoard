@@ -263,7 +263,10 @@ function BackupSection() {
             change — no downloads, nothing leaves your computer. {s.saving ? 'Saving…' : `Last saved ${lastSaved}.`}
           </p>
           <div className="flex flex-wrap gap-2">
-            <Button onClick={async () => { await saveNow(); setMsg('Saved.'); }}>Save now</Button>
+            <Button onClick={async () => {
+              if ((s.restorable || s.shrinkBlocked) && !window.confirm('Your backup file has more data than this browser. Overwrite it with what is here now?')) return;
+              await saveNow(true); setMsg('Saved.');
+            }}>Save now</Button>
             <Button onClick={restore}>Restore from file…</Button>
             <Button variant="danger" onClick={async () => { await disconnectBackupFile(); setMsg('Disconnected. Your data and the file are untouched.'); }}>Disconnect</Button>
           </div>

@@ -102,14 +102,30 @@ async function writeFile(h: FileHandle, payload: BackupPayload): Promise<void> {
   await w.write(JSON.stringify(payload, null, 2));
   await w.close();
 }
-async function fileHasData(h: FileHandle): Promise<boolean> {
+/** Records that matter (opportunities + contacts) in a backup payload. */
+export function recordCount(p: { data?: Record<string, unknown[] | undefined> } | null | undefined): number {
+  return (p?.data?.opportunities?.length ?? 0) + (p?.data?.contacts?.length ?? 0);
+}
+/** Records in the backup file on disk, or 0 if it's empty / not a JobBoard backup. */
+async function fileRecordCount(h: FileHandle): Promise<number> {
   try {
     const file = await h.getFile();
-    if (file.size < 5) return false;
+    if (file.size < 5) return 0;
     const p = JSON.parse(await file.text());
-    return p?.app === 'jobboard' && p?.data &&
-      ((p.data.opportunities?.length ?? 0) > 0 || (p.data.contacts?.length ?? 0) > 0);
-  } catch { return false; }
+    return p?.app === 'jobboard' ? recordCount(p) : 0;
+  } catch { return 0; }
+}
+async function fileHasData(h: FileHandle): Promise<boolean> {
+  return (await fileRecordCount(h)) > 0;
+}
+
+/**
+ * Would an automatic save shrink the file enough that it looks like data loss
+ * (a wiped browser, a cleared database, a wrong import)? Then autosave pauses
+ * and asks, rather than overwriting the one copy that still has everything.
+ */
+export function looksLikeDataLoss(fileRecords: number, newRecords: number): boolean {
+  return fileRecords >= 5 && newRecords < fileRecords / 2;
 }
 
 // ---------- persistent storage ----------
@@ -133,12 +149,14 @@ export interface BackupState {
   saving: boolean;
   needsReconnect: boolean; // handle stored but permission must be re-granted (needs a click)
   restorable: boolean; // DB empty but the backup file has data — offer to restore
+  /** Autosave paused: saving would shrink the file from `was` to `now` records. */
+  shrinkBlocked: { was: number; now: number } | null;
   persistent: boolean;
 }
 
 let state: BackupState = {
   supported: FS_SUPPORTED, connected: false, fileName: '', lastSaved: null,
-  saving: false, needsReconnect: false, restorable: false, persistent: false,
+  saving: false, needsReconnect: false, restorable: false, shrinkBlocked: null, persistent: false,
 };
 const listeners = new Set<(s: BackupState) => void>();
 function set(patch: Partial<BackupState>) { state = { ...state, ...patch }; listeners.forEach((l) => l(state)); }
@@ -152,31 +170,61 @@ let dirty = false;
 let saving = false;
 let timer: ReturnType<typeof setTimeout> | null = null;
 
+function schedule() {
+  if (timer) clearTimeout(timer);
+  timer = setTimeout(() => { timer = null; void flush(); }, 3500);
+}
+
 /** Flag that data changed; debounced write a few seconds later. */
 export function markDirty() {
-  if (!handle) return;
+  // While a restore is on offer, nothing is written: the file is the good copy.
+  if (!handle || state.restorable) return;
   dirty = true;
-  if (timer) clearTimeout(timer);
-  timer = setTimeout(() => { void flush(); }, 3500);
+  schedule();
 }
-async function flush() {
-  if (!handle || !dirty || saving) return;
+
+/**
+ * Write the database to the file. `force` is for an explicit user choice
+ * ("Save now", "Save anyway"); automatic saves never overwrite a restore
+ * offer or a much larger file.
+ */
+async function flush(force = false) {
+  if (!handle || saving) return;
+  if (!force && (!dirty || state.restorable || state.shrinkBlocked)) return;
   saving = true; dirty = false; set({ saving: true });
   try {
-    await writeFile(handle, await collectBackup());
-    set({ saving: false, lastSaved: Date.now() });
+    const payload = await collectBackup();
+    if (!force) {
+      const was = await fileRecordCount(handle);
+      const now = recordCount(payload);
+      if (looksLikeDataLoss(was, now)) {
+        dirty = true;
+        set({ saving: false, shrinkBlocked: { was, now } });
+        return;
+      }
+    }
+    await writeFile(handle, payload);
+    set({ saving: false, lastSaved: Date.now(), restorable: false, shrinkBlocked: null });
   } catch {
     dirty = true; // permission may have lapsed; surface a reconnect
     set({ saving: false, needsReconnect: true });
   } finally {
     saving = false;
+    // Changes made while this save was running still need saving.
+    if (dirty && !state.needsReconnect && !state.shrinkBlocked && !state.restorable) schedule();
   }
 }
-export async function saveNow(): Promise<void> { if (handle) { dirty = true; await flush(); } }
+/** Save immediately. Pass `force` only for an explicit user choice. */
+export async function saveNow(force = false): Promise<void> {
+  if (!handle) return;
+  if (timer) { clearTimeout(timer); timer = null; }
+  dirty = true;
+  await flush(force);
+}
 
-function start(h: FileHandle) {
+function start(h: FileHandle, restorable = false) {
   handle = h;
-  set({ connected: true, fileName: h.name, needsReconnect: false, restorable: false });
+  set({ connected: true, fileName: h.name, needsReconnect: false, restorable, shrinkBlocked: null });
 }
 
 // Register dirty-tracking hooks on every data table, once.
@@ -191,6 +239,17 @@ function installHooks() {
     table.hook('updating', () => { markDirty(); });
     table.hook('deleting', () => { markDirty(); });
   }
+  // Closing or hiding the tab: save now rather than lose the last few seconds.
+  if (typeof document !== 'undefined') {
+    document.addEventListener('visibilitychange', () => {
+      if (document.visibilityState === 'hidden' && dirty && timer) { clearTimeout(timer); timer = null; void flush(); }
+    });
+  }
+}
+
+/** Blank database but a backup file with data: offer a restore instead of saving. */
+async function shouldOfferRestore(h: FileHandle): Promise<boolean> {
+  return (await db.opportunities.count()) === 0 && (await fileHasData(h));
 }
 
 /** Called once on app load: set up persistence and resume autosave if possible. */
@@ -202,20 +261,16 @@ export async function initAutoBackup(): Promise<void> {
   if (!h) return;
   const perm = await permState(h);
   if (perm === 'granted') {
-    start(h);
-    // Blank visit with a populated backup → offer restore instead of overwriting.
-    if ((await db.opportunities.count()) === 0 && (await fileHasData(h))) {
-      set({ restorable: true });
-    } else {
-      void saveNow();
-    }
+    const offer = await shouldOfferRestore(h);
+    start(h, offer);
+    if (!offer) void saveNow();
   } else {
     // Stored, but the OS/browser needs a fresh click to re-grant access.
     set({ fileName: h.name, needsReconnect: true, restorable: await fileHasData(h) });
   }
 }
 
-/** User picks a backup file (first-time setup). Writes current data immediately. */
+/** User picks a backup file (first-time setup). Writes current data, unless that would shrink an existing backup. */
 export async function chooseBackupFile(): Promise<void> {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const h: FileHandle = await (window as any).showSaveFilePicker({
@@ -233,13 +288,9 @@ export async function reconnectBackupFile(): Promise<void> {
   if (!h) return;
   if (!(await ensurePermission(h))) return;
   await handlePut(h);
-  if ((await db.opportunities.count()) === 0 && (await fileHasData(h))) {
-    start(h);
-    set({ restorable: true });
-  } else {
-    start(h);
-    await saveNow();
-  }
+  const offer = await shouldOfferRestore(h);
+  start(h, offer);
+  if (!offer) await saveNow();
 }
 
 /** Restore the database from the connected backup file. */
@@ -248,18 +299,26 @@ export async function restoreFromBackupFile(): Promise<{ counts: Record<string, 
   if (!h) return null;
   if (!(await ensurePermission(h))) return null;
   const file = await h.getFile();
-  const result = await importBackup(await file.text());
+  // Keep autosave from writing mid-import; the file already matches what we load.
+  const prev = state.restorable;
+  set({ restorable: true });
+  let result;
+  try {
+    result = await importBackup(await file.text());
+  } catch (e) {
+    set({ restorable: prev });
+    throw e;
+  }
+  if (timer) { clearTimeout(timer); timer = null; }
+  dirty = false;
   start(h);
-  set({ restorable: false });
   return result;
 }
-
-export function dismissRestore() { set({ restorable: false }); }
 
 /** Stop autosaving and forget the file (data stays; the file stays). */
 export async function disconnectBackupFile(): Promise<void> {
   if (timer) clearTimeout(timer);
   handle = null;
   await handleDel();
-  set({ connected: false, fileName: '', needsReconnect: false, restorable: false, lastSaved: null });
+  set({ connected: false, fileName: '', needsReconnect: false, restorable: false, shrinkBlocked: null, lastSaved: null });
 }

@@ -200,6 +200,20 @@ const numericIds = (raw: string): string[] => {
   return list.map((x) => String(x).trim()).filter((x) => /^\d+$/.test(x));
 };
 
+/** The address as a full https link if it's on linkedin.com (or a subdomain), else null. */
+function linkedinLink(text: string): string | null {
+  try {
+    const u = new URL(/^[a-z][a-z0-9+.-]*:/i.test(text) ? text : `https://${text}`);
+    const host = u.hostname.toLowerCase();
+    if (u.protocol !== 'https:' && u.protocol !== 'http:') return null;
+    if (host !== 'linkedin.com' && !host.endsWith('.linkedin.com')) return null;
+    u.protocol = 'https:';
+    return u.toString();
+  } catch {
+    return null;
+  }
+}
+
 /**
  * Parse a pasted company-LinkedIn string. Any address from the company works:
  *  1. The company page, or any tab of it (linkedin.com/company/<slug>/people/,
@@ -212,10 +226,13 @@ export function parseCompanyLinkedin(text: string): CompanyLinkedin | null {
   const input = text.trim();
   if (!input) return null;
   const idsMatch = input.match(/[?&](?:currentCompany|f_C)=([^&#\s]+)/i);
-  if (idsMatch) {
+  // The search address is stored and shown as a link, so keep it only if it
+  // really is an https LinkedIn address ("javascript:…?currentCompany=1" is not).
+  const searchUrl = idsMatch ? linkedinLink(input) : null;
+  if (idsMatch && searchUrl) {
     try {
       const ids = numericIds(idsMatch[1]);
-      if (ids.length) return { url: input, companyIds: ids };
+      if (ids.length) return { url: searchUrl, companyIds: ids };
     } catch {
       /* fall through to slug parsing */
     }

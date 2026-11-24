@@ -464,8 +464,8 @@ function CompanyLIField({ opp }: { opp: Opportunity }) {
     <DetailField label="Company LI" tour="company-li">
       {editing ? (
         <input autoFocus value={draft} onChange={(e) => { setDraft(e.target.value); setErr(false); }} onBlur={commit} onKeyDown={(e) => { if (e.key === 'Enter') commit(); if (e.key === 'Escape') { setEditing(false); setErr(false); } }} placeholder="linkedin.com/company/…" title={tip} style={{ fontFamily: MONO, fontSize: 11, border: err ? `1.5px solid ${C.brick}` : `1px solid ${C.lineStrong}`, borderRadius: 4, padding: '2px 6px', outline: 'none', width: 148 }} />
-      ) : opp.companyLinkedinUrl ? (
-        <a href={opp.companyLinkedinUrl} target="_blank" rel="noreferrer" onDoubleClick={(e) => { e.preventDefault(); setDraft(opp.companyLinkedinUrl ?? ''); setEditing(true); }} className="truncate" title={`${opp.companyLinkedinUrl}\nFind links show current employees only. Double-click to change.`} style={{ ...linkCss, display: 'inline-block', fontFamily: MONO, maxWidth: 148, fontWeight: 400 }}>{display}</a>
+      ) : webLink(opp.companyLinkedinUrl) ? (
+        <a href={webLink(opp.companyLinkedinUrl)} target="_blank" rel="noreferrer" onDoubleClick={(e) => { e.preventDefault(); setDraft(opp.companyLinkedinUrl ?? ''); setEditing(true); }} className="truncate" title={`${opp.companyLinkedinUrl}\nFind links show current employees only. Double-click to change.`} style={{ ...linkCss, display: 'inline-block', fontFamily: MONO, maxWidth: 148, fontWeight: 400 }}>{display}</a>
       ) : (
         <span className="flex items-center gap-2.5">
           {opp.company.trim() && <a href={companyFindUrl(opp.company)} target="_blank" rel="noreferrer" title="Open LinkedIn's company search, click the right company, then copy its address and paste it here." style={linkCss}>find ↗</a>}
